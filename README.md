@@ -1,0 +1,1 @@
+The repo is part of the class project for UW ECE 595 blockchain. The project designs a secure P2P topology induced by data structures on the blockchain for defending Sybil attack. The designed network is a critical component for building a decentralized content distribution network, which serves as digital commons for public interests.
