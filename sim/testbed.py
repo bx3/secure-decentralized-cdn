@@ -14,6 +14,7 @@ graph = Graph(N_PUB, N_LURK, N_SYBIL)
 network = Network(N_PUB+N_LURK+N_SYBIL)
 # create random topology, need to change later 
 graph.preset_rand_honest_peers()
+#graph.add_conn_msgs()
 
 epoch = 120 # round 
 
@@ -21,9 +22,11 @@ epoch = 120 # round
 
 # protocol
 gossipsub = GossipSub()
+# flood =
 
 for curr_r in range(epoch):
     curr_msgs = []
+    # TODO honest nodes
     for u in graph.nodes:
         msgs = gossipsub.push_local_mesh(graph, u)    
         curr_msgs += msgs
@@ -40,4 +43,5 @@ for curr_r in range(epoch):
         msgs = network.get_msgs(u, curr_r)
         gossipsub.process_msgs(graph, u, msgs)    
 
-# analyze stat ...
+# analyze stat ... generate figure
+

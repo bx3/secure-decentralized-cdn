@@ -1,10 +1,10 @@
 from enum import Enum
 # define 
-N_PUB = 9
-N_LURK = 1
+N_PUB = 90
+N_LURK = 10
 N_DEGREE = 20
 
-N_SYBIL = 10
+N_SYBIL = 0
 ATTACK_DEG = 100
 
 OVERLAY_D = 8

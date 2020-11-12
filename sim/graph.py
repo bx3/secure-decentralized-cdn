@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import networkx as nx
 from config import *
 import random
 
@@ -15,9 +14,9 @@ class Node:
         # states
         self.conn = []
         self.role = role
-        self.lazy = []
+        self.lazy_conn = []
         self.peers = []
-        self.out_msgs = []
+        self.out_msgs = [] 
         self.scores = {} # key is peer, value is score
 
     # # # # # # # # # 
@@ -51,6 +50,12 @@ class Graph:
         for u in self.nodes:
             peers = self.get_rand_honests(u)
             self.nodes[u].peers = peers
+
+    # TODO
+    def add_conn_msgs(self):
+        # create msg
+        # put msg to node.out_msgs
+        # msg = Message(GossipMessageType.GRAFT,1,2, False)
 
     # u is node
     def get_rand_honests(self, u):

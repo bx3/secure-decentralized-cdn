@@ -2,7 +2,7 @@ from config import *
 
 class Network:
     def __init__(self, num_node):
-        self.network = {}
+        self.network = {} # key is node, value is msg queue
         for i in range(num_node):
             self.network[i] = [] # tagged message queue (delivery_round, msg)
     
@@ -20,7 +20,7 @@ class Network:
     # tagged msg, when is delivered
     def deliver_msgs(self, msgs, curr_r):
         for msg in msgs:
-            mtype, src, dst, adv = msg
+            mtype, src, dst, adv, mid = msg
             tagged_msg = (curr_r, msg)
             self.network[dst].append(tagged_msg)
             assert(len(self.network[dst]) < NETWORK_QUEUE_LIM)

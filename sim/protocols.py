@@ -24,14 +24,12 @@ class GossipSub:
     def process_msgs(self, graph, u, msgs):
         # update local state
         node = graph.nodes[u]
-        pass
+        for msg in msgs:
+            # process to change state
+            pass
 
     # define rules fore each node to write messages to network
     def push_local_mesh(self, graph, u):
-        # process internal logic + add msgs
-        # msg = Message(GossipMessageType.GRAFT,1,2, False)
-        # self.out_msgs = self.out_msgs + [msg]
-       
         # reset out_msgs
         out_msg = graph.nodes[u].flush_out_msgs()
         return out_msg
