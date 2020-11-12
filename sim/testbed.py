@@ -2,25 +2,42 @@
 import sys
 import os
 import networkx as nx
-import graph as Graph
+from graph import *
+from network import Network
 from messages import *
 from config import *
+from protocols import GossipSub
 
-# create nodes 
-graph = Graph.init_nodes(N_PUB, N_LURK, N_SYBIL)
-# create edges
-Graph.setup_warm_network(graph, 'rand')
+# storing node states 
+graph = Graph(N_PUB, N_LURK, N_SYBIL)
+# storing rx-msg queue states
+network = Network(N_PUB+N_LURK+N_SYBIL)
+# create random topology, need to change later 
+graph.preset_rand_honest_peers()
 
 epoch = 120 # round 
 
-m = Message(MessageType.GRAFT,1,2)
-print(m)
+#m = Message(MessageType.GRAFT,1,2)
 
+# protocol
+gossipsub = GossipSub()
 
-for i in range(epoch):
-    break
-    # chosen attack strategy according to attack 1  
-    # get a list of state to be added to the graph
-    # update graph st
+for curr_r in range(epoch):
+    curr_msgs = []
+    for u in graph.nodes:
+        msgs = gossipsub.push_local_mesh(graph, u)    
+        curr_msgs += msgs
 
+    # chosen attack strategy according to attack  
+    adv_msgs = []
+    # maybe rearrange message order
+    curr_msgs = adv_msgs + curr_msgs
+    # deliver msgs
+    network.deliver_msgs(curr_msgs, curr_r)
 
+    # node process messages
+    for u in graph.nodes:
+        msgs = network.get_msgs(u, curr_r)
+        gossipsub.process_msgs(graph, u, msgs)    
+
+# analyze stat ...

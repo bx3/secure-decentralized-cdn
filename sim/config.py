@@ -14,6 +14,10 @@ OVERLAY_DHI = 12
 OVERLAY_DSCORE = 6
 OVERLAY_DLAZY = 12
 
+NETWORK_QUEUE_LIM = 100
+
+HEARTBEAT = 10 # round
+
 class NodeType(Enum):
     PUB = 0
     LURK = 1

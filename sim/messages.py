@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import namedtuple
 
-class MessageType(Enum):
+class GossipMessageType(Enum):
     GRAFT = 0
     PRUNE = 1
     JOIN  = 2
@@ -10,4 +10,6 @@ class MessageType(Enum):
     IWANT = 5
     PRUNE_PEER = 6
 
-Message = namedtuple('Message', ['mType', 'src', 'dst'])
+# other MessageType for Flood ...
+# last adv is flag for adversarial
+Message = namedtuple('Message', ['mType', 'src', 'dst', 'adv'])
