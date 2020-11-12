@@ -12,10 +12,10 @@ def get_rand_sybil():
 class Node:
     def __init__(self, role):
         # states
-        self.conn = []
+        self.conn = set()
         self.role = role
-        self.lazy_conn = []
-        self.peers = []
+        self.lazy_conn = set()
+        self.peers = set()
         self.out_msgs = [] 
         self.scores = {} # key is peer, value is score
 
@@ -55,11 +55,18 @@ class Graph:
     def add_conn_msgs(self):
         # create msg
         # put msg to node.out_msgs
-        # msg = Message(GossipMessageType.GRAFT,1,2, False)
+        # Initial msgs
+        for u in self.nodes: 
+            node = self.nodes[u]
+            rand_peer = random.choice(node.peers)
+            node.conn.add(rand_peer)
+            msg = Message(GossipMessageType.GRAFT, 0, u, rand_peer, False)
+            node.out_msgs.append(msg)
+        pass
 
     # u is node
     def get_rand_honests(self, u):
-        peers = []
+        peers = set()
         attr = self.nodes[u]
         if attr.role == NodeType.PUB or attr.role == NodeType.LURK:
             # randomly select D honest node to connect
@@ -67,7 +74,7 @@ class Graph:
             while 1:
                 v = get_rand_honest()
                 if v not in attr.conn and v != u:
-                    peers.append(v)
+                    peers.add(v)
                 else:
                     continue
                 if len(peers) == OVERLAY_D:

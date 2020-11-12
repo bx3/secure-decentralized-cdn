@@ -20,7 +20,7 @@ class Network:
     # tagged msg, when is delivered
     def deliver_msgs(self, msgs, curr_r):
         for msg in msgs:
-            mtype, src, dst, adv, mid = msg
+            mtype, mid, src, dst, adv = msg
             tagged_msg = (curr_r, msg)
             self.network[dst].append(tagged_msg)
             assert(len(self.network[dst]) < NETWORK_QUEUE_LIM)
