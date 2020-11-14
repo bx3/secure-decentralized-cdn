@@ -5,20 +5,14 @@ import math
 def get_dist(x, y):
     return math.sqrt(float((x[0]-y[0])**2 + (x[1]-y[1])**2))
 
-# u and v are nodes
-def get_link_bandwidth(u, v):
-    dist = get_dist(u.loc, v.loc)
-    b = BANDWIDTH / dist
-    return b
-
 class Network:
     def __init__(self, num_node):
-        self.queues = {} # key is node, value is msg queue
+        self.queues = {} # key is node id, value is msg queue
         self.link_bandwidth = {}
         for i in range(num_node):
             self.queues[i] = [] # tagged message queue (delivery_round, msg)
 
-    # TODO change to 
+    # TODO  
     def setup_link_bandwidth(self, graph):
         for i in graph.nodes:
             for j in graph.nodes:
@@ -42,15 +36,27 @@ class Network:
     def deliver_msgs(self, msgs, curr_r):
         for msg in msgs:
             mtype, mid, src, dst, adv, length, payload = msg
-            
-            # TODO add message delay
-            assert((src, dst) in self.link_bandwidth)
-            lb = self.link_bandwidth[(src, dst)]
-            target_r = curr_r + math.floor((length/lb)/MILLISEC_PER_ROUND)
-
-            tagged_msg = (target_r, msg)
+            # TODO add delay to TRANS type msg
+            tagged_msg = (curr_r, msg)
             self.queues[dst].append(tagged_msg)
             assert(len(self.queues[dst]) < NETWORK_QUEUE_LIM)
+
+    # TODO transmission and propogation delay
+    def compute_delay(self, src, dst):
+        pass
+        # TODO add message delay
+        # assert((src, dst) in self.link_bandwidth)
+        # lb = self.link_bandwidth[(src, dst)]
+        # target_r = curr_r + math.floor((length/lb)/MILLISEC_PER_ROUND)
+        #return  target_r
+
+    # TODO
+    def gen_heartbeats(self):
+        for u, _ in self.queues.items():
+            # generate HEARTBEAT msg to every queue
+            pass 
+
+
 
 
     def add_node(self, i):

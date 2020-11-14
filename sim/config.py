@@ -22,6 +22,10 @@ BANDWIDTH = 8e7 # 10Mbps per sec
 
 MILLISEC_PER_ROUND = 100
 
+TIMEOUT = 4 # round
+
+D_OUT = 8 # min outbound connection per peer
+
 class NodeType(Enum):
     PUB = 0
     LURK = 1

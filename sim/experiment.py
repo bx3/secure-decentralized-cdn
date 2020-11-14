@@ -2,7 +2,6 @@ from graph import *
 from network import Network
 from messages import *
 from config import *
-from protocols import GossipSub
 from graph import State
 
 class Snapshot:
@@ -11,23 +10,25 @@ class Snapshot:
         self.nodes = {} # key:node id value: node state
         self.network = {} # message queue in for each node
 
+
+
 class Experiment:
-    def __init__(self):
+    def __init__(self, heartbeat):
         self.snapshots = []
-        self.protocol = GossipSub()
         self.network = Network(N_PUB+N_LURK+N_SYBIL)
         self.graph = Graph(N_PUB, N_LURK, N_SYBIL)
-        # init nodes
+        # init nodes and bandwidth
         self.graph.preset_rand_honest_peers()
-
+        self.network.setup_link_bandwidth(self.graph)
+        self.heartbeat_period = heartbeat
 
     # # # # # # # # 
     #  main loop  #
     # # # # # # # # 
     def start(self, epoch):
-        degrees = []
-        components = []
         for r in range(epoch):
+            # periodically gen hearbeat
+            
             # network store messages from honest nodes
             self.push_honest_msgs(r)
             # start attack
@@ -37,13 +38,20 @@ class Experiment:
             # take snapshot
             self.take_snapshot(r)
 
-    # # # # # # # # 
+    # three heartbeat
+    def schedule_heartbeat(r):
+        if r!=0 and r%self.heartbeat_period==0:
+            self.network.gen_heartbeat()
+        elif r!=1 and r%self.heartbeat_period==1:
+            self.network.gen_heartbeat()
+        elif r!=2 and r%self.heartbeat_period==2:
+            self.network.gen_heartbeat()
+
     # honest nodes push msg to network
-    # # # # # # # # 
     def push_honest_msgs(self, curr_r):
         # TODO honest nodes
         for _, node in self.graph.nodes.items():
-            msgs = node.flush_msgs() 
+            msgs = node.send_msgs() 
             self.network.deliver_msgs(msgs, curr_r)
 
     def act_adversarirs(self, r):

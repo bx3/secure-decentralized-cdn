@@ -8,8 +8,9 @@ from experiment import Experiment
 
 
 epoch = 20 # round 
+heartbeat = 100000
 
-gossipsub = Experiment()
+gossipsub = Experiment(heartbeat)
 gossipsub.start(epoch)
 gossipsub.analyze_snapshot()
 
