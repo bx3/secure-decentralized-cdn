@@ -18,6 +18,10 @@ NETWORK_QUEUE_LIM = 100
 
 HEARTBEAT = 10 # round
 
+BANDWIDTH = 8e7 # 10Mbps per sec
+
+MILLISEC_PER_ROUND = 100
+
 class NodeType(Enum):
     PUB = 0
     LURK = 1

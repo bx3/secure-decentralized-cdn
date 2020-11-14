@@ -9,8 +9,8 @@ class GossipMessageType(Enum):
     IHAVE = 4
     IWANT = 5
     PRUNE_PEER = 6
-    CONTENT = 7
+    TRANS = 7
 
 # other MessageType for Flood ...
 # last adv is flag for adversarial
-Message = namedtuple('Message', ['mType', 'id', 'src', 'dst', 'adv'])
+Message = namedtuple('Message', ['mType', 'id', 'src', 'dst', 'adv', 'length', 'payload'])
