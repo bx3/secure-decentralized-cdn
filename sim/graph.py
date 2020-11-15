@@ -4,7 +4,7 @@ import random
 from collections import namedtuple
 from messages import *
 
-State = namedtuple('State', ['conn', 'role', 'lazy_conn', 'peers', 'out_msgs', 'scores'])
+State = namedtuple('State', ['role', 'conn', 'mesh', 'peers', 'out_msgs', 'scores'])
 
 def get_rand_honest():
     return random.randint(0, N_PUB + N_LURK-1)
@@ -193,8 +193,7 @@ class Node:
 
     # return State, remember to return a copy
     def get_states(self):
-        # 
-        pass
+        return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), self.D_scores.copy())
 
 
 class Graph:
