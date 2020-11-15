@@ -1,5 +1,6 @@
 from enum import Enum
-# define 
+
+# network
 N_PUB = 90
 N_LURK = 10
 N_DEGREE = 20
@@ -7,26 +8,30 @@ N_DEGREE = 20
 N_SYBIL = 0
 ATTACK_DEG = 100
 
+RTT = 100 # millisecond
+LINK_LATENCY = 50 # millisecond
+MILLISEC_PER_ROUND = LINK_LATENCY
+NETWORK_QUEUE_LIM = 100
+BANDWIDTH = 24*8*1e6 # 24 MB per sec
+
+# mesh
 OVERLAY_D = 8
 OVERLAY_DLO = 6
 OVERLAY_DHI = 12
 
 OVERLAY_DSCORE = 6
 OVERLAY_DLAZY = 12
-
-NETWORK_QUEUE_LIM = 100
-
-HEARTBEAT = 10 # round
-
-BANDWIDTH = 8e7 # 10Mbps per sec
-
-MILLISEC_PER_ROUND = 100
+HEARTBEAT = 1e3/MILLISEC_PER_ROUND # 1 sec <=> 20 round
 
 TIMEOUT = 4 # round
 
 D_OUT = 8 # min outbound connection per peer
 
 GOSSIP_FACTOR = 0.25
+
+NUM_TRANS_PER_SEC = 120
+TRANS_SIZE = 2e3 # bytes
+
 
 class NodeType(Enum):
     PUB = 0

@@ -16,7 +16,7 @@ class MessageType(Enum):
 Message = namedtuple('Message', ['mType', 'id', 'src', 'dst', 'adv', 'length', 'payload'])
 
 # Graft = namedtuple('Graft', [''])
-Heartbeat = namedtuple('Heartbeat', ['ihaves'])
+Heartbeat = namedtuple('Heartbeat', ['null'])
 IHave = namedtuple('IHave', ['msgs_id']) # msgs_id is a list of msg id
 IWant = namedtuple('IWant', ['msgs_id'])
 Prune = namedtuple('Prune', ['null']) 

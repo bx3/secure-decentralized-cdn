@@ -57,7 +57,7 @@ class Node:
         self.num_tx_trans = 0
         self.topics = set()
 
-    # worker loop
+    # worker func 
     def process_msgs(self, msgs):
         # update local state
         for msg in msgs:
@@ -95,7 +95,7 @@ class Node:
         self.out_msgs = []
         return out_msg
 
-    # TODO add random  transactions
+    # TODO add random  transactions 
     def gen_trans(self):
         trans = None # Message(..)
         self.out_msgs.append(trans)
@@ -151,42 +151,39 @@ class Node:
         pass
 
     # TODO
-    def update(self):
-        
-
-
-        if len(self.conn) > OVERLAY_DHI:
-            #  while (len(node.conn) > OVERLAY_DHI):
-            rand_conn = self.conn.pop()
-            msg = Message(MessageType.PRUNE, 0, self.id, rand_conn, False, 0, '')
-            self.out_msgs.append(msg)
-        elif len(self.conn) < OVERLAY_DLO:
-            #  while (len(node.conn) < OVERLAY_DLO):
-            rand_peer = random.sample(self.peers, 1)[0]
-            if rand_peer not in self.conn:
-                self.conn.add(rand_peer)
-                msg = Message(MessageType.GRAFT, 0, self.id, rand_peer, False, 0, '')
-                self.out_msgs.append(msg)
-        else: 
-            pass
+    # def update(self):
+        # if len(self.conn) > OVERLAY_DHI:
+            # #  while (len(node.conn) > OVERLAY_DHI):
+            # rand_conn = self.conn.pop()
+            # msg = Message(MessageType.PRUNE, 0, self.id, rand_conn, False, 0, '')
+            # self.out_msgs.append(msg)
+        # elif len(self.conn) < OVERLAY_DLO:
+            # #  while (len(node.conn) < OVERLAY_DLO):
+            # rand_peer = random.sample(self.peers, 1)[0]
+            # if rand_peer not in self.conn:
+                # self.conn.add(rand_peer)
+                # msg = Message(MessageType.GRAFT, 0, self.id, rand_peer, False, 0, '')
+                # self.out_msgs.append(msg)
+        # else: 
+            # pass
             # self.random_change()
 
-    def random_change(self):
-        rand = random.random()
-        if rand < 0.33:
-            # remove a random connection
-            rand_conn = self.conn.pop()
-            msg = Message(MessageType.PRUNE, 0, self.id, rand_conn, False)
-            self.out_msgs.append(msg)
-        elif rand < 0.66:
-            # add a random honest connection
-            rand_honest = random.randint(0, N_PUB + N_LURK-1)
-            while rand_honest in self.conn:
-                rand_honest = random.randint(0, N_PUB + N_LURK-1)
-            self.conn.add(rand_honest)
-            self.peers.add(rand_honest)
-            msg = Message(MessageType.GRAFT, 0, self.id, rand_honest, False)
-            self.out_msgs.append(msg)
+    # def random_change(self):
+        # rand = random.random()
+        # if rand < 0.33:
+            # # remove a random connection
+            # rand_conn = self.conn.pop()
+            # msg = Message(MessageType.PRUNE, 0, self.id, rand_conn, False)
+            # self.out_msgs.append(msg)
+        # elif rand < 0.66:
+            # # add a random honest connection
+            # rand_honest = random.randint(0, N_PUB + N_LURK-1)
+            # while rand_honest in self.conn:
+                # rand_honest = random.randint(0, N_PUB + N_LURK-1)
+            # self.conn.add(rand_honest)
+            # self.peers.add(rand_honest)
+            # msg = Message(MessageType.GRAFT, 0, self.id, rand_honest, False)
+            # self.out_msgs.append(msg)
 
     # # # # # # # # # 
     # read node     # 
@@ -196,6 +193,7 @@ class Node:
 
     # return State, remember to return a copy
     def get_states(self):
+        # 
         pass
 
 
@@ -211,23 +209,10 @@ class Graph:
         print("total num node", len(self.nodes))
 
     # set honests peers to each node, populate node.conn
-    def preset_rand_honest_peers(self):
+    def preset_known_peers(self):
         for u in self.nodes:
             peers = self.get_rand_honests(u)
             self.nodes[u].peers = peers
-
-    # TODO
-    def add_conn_msgs(self):
-        # create msg
-        # put msg to node.out_msgs
-        # Initial msgs
-        for u in self.nodes: 
-            node = self.nodes[u]
-            rand_peer = random.choice(node.peers)
-            node.conn.add(rand_peer)
-            msg = Message(MessageType.GRAFT, 0, u, rand_peer, False)
-            node.out_msgs.append(msg)
-        pass
 
     # u is node
     def get_rand_honests(self, u):

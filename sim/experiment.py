@@ -20,7 +20,7 @@ class Experiment:
         self.network = Network(N_PUB+N_LURK+N_SYBIL)
         self.graph = Graph(N_PUB, N_LURK, N_SYBIL)
         # init nodes and bandwidth
-        self.graph.preset_rand_honest_peers()
+        self.graph.preset_known_peers()
         self.network.setup_link_bandwidth(self.graph)
         self.heartbeat_period = heartbeat
 
@@ -41,9 +41,9 @@ class Experiment:
             self.take_snapshot(r)
 
     # three heartbeat
-    def schedule_heartbeat(r):
+    def schedule_heartbeat(self, r):
         if r!=0 and r%self.heartbeat_period==0:
-            self.network.gen_heartbeat()
+            self.network.gen_heartbeats()
         # elif r!=1 and r%self.heartbeat_period==1:
             # self.network.gen_heartbeat()
         # elif r!=2 and r%self.heartbeat_period==2:
@@ -70,8 +70,6 @@ class Experiment:
         for u, node in self.graph.nodes.items():
             msgs = self.network.get_msgs(u, curr_r)
             node.process_msgs(msgs)
-        # node take new action
-        # gossipsub.node_action(graph)
 
     def take_snapshot(self, r):
         snapshot = Snapshot()

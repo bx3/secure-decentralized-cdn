@@ -52,6 +52,7 @@ class Network:
 
     # TODO
     def gen_heartbeats(self):
+        # TODO PUB only
         for u, _ in self.queues.items():
             # generate HEARTBEAT msg to every queue
             pass 

@@ -2,9 +2,10 @@
 import sys
 import os
 from experiment import Experiment
+from config import *
 
-epoch = 20 # round 
-heartbeat = 100000
+epoch = 100 # round 
+heartbeat = HEARTBEAT
 
 gossipsub = Experiment(heartbeat)
 gossipsub.start(epoch)
