@@ -45,10 +45,10 @@ class Node:
         self.mesh = set() # mesh push
         self.peers = set() # known peers
         self.out_msgs = [] # msg to push in the next round
-        self.D_scores = {} # key is peer, value is PeerScoreCounter
+        self.D_scores = {} # mesh peer score, key is peer, value is PeerScoreCounter
         self.id = u # my id
-        self.D = 0 # curr degree: incoming and outgoing
-        self.D_out = 0 # num outgoing connections
+        self.D = 0 # curr in local mesh degree: incoming + outgoing
+        self.D_out = 0 # num outgoing connections in the mesh
         # useful later 
         self.loc = (0,0) # for compute propagation delay
         self.down_bd = BANDWIDTH # for compute transmission delay
@@ -63,19 +63,19 @@ class Node:
         for msg in msgs:
             mtype, _, _, dst, _, _, _ = msg
             assert self.id == dst
-            if mtype == GossipMessageType.GRAFT:
+            if mtype == MessageType.GRAFT:
                 self.proc_GRAFT(msg)
-            elif mtype == GossipMessageType.PRUNE:
+            elif mtype == MessageType.PRUNE:
                 self.proc_PRUNE(msg)
-            elif mtype == GossipMessageType.LEAVE:
+            elif mtype == MessageType.LEAVE:
                 self.proc_LEAVE(msg) 
-            elif mtype == GossipMessageType.IHAVE:
+            elif mtype == MessageType.IHAVE:
                 self.proc_IHAVE(msg) 
-            elif mtype == GossipMessageType.IWANT:
+            elif mtype == MessageType.IWANT:
                 self.proc_IWANT(msg) 
-            elif mtype == GossipMessageType.PX:
+            elif mtype == MessageType.PX:
                 self.proc_PX(msg)
-            elif mtype == GossipMessageType.HEARTBEAT:
+            elif mtype == MessageType.HEARTBEAT:
                 self.proc_Heartbeat(msg)
 
         #self.update()
@@ -102,7 +102,7 @@ class Node:
 
     # TODO generate IHave
     def proc_Heartbeat(self, msg):
-        nodes = self.rand_conn_nodes()
+        nodes = self.get_rand_gossip_nodes()
 
         # prune negative score peer, add positive peer, maintain D_out
         peers_score = {}
@@ -127,12 +127,14 @@ class Node:
     def proc_IWANT(self, msg):
         pass
 
+    # find other peers to add
     def proc_PRUNE(self, msg):
         _, _, src, _, _, _, _ = msg
         if src in self.mesh:
             self.mesh.remove(src)
         pass
 
+    # the other peer has added me to its mesh, I will add it too 
     def proc_GRAFT(self, msg):
         _, _, src, _, _, _, _ = msg
         self.mesh.add(src)
@@ -144,8 +146,8 @@ class Node:
     def proc_PX(self, msg):
         pass
    
-    # send random subset peers gossip
-    def rand_conn_nodes(self):
+    # send random subset peers gossip with GOSSIP_FACTOR, see section 6.4
+    def get_rand_gossip_nodes(self):
         pass
 
     # TODO
@@ -156,14 +158,14 @@ class Node:
         if len(self.conn) > OVERLAY_DHI:
             #  while (len(node.conn) > OVERLAY_DHI):
             rand_conn = self.conn.pop()
-            msg = Message(GossipMessageType.PRUNE, 0, self.id, rand_conn, False, 0, '')
+            msg = Message(MessageType.PRUNE, 0, self.id, rand_conn, False, 0, '')
             self.out_msgs.append(msg)
         elif len(self.conn) < OVERLAY_DLO:
             #  while (len(node.conn) < OVERLAY_DLO):
             rand_peer = random.sample(self.peers, 1)[0]
             if rand_peer not in self.conn:
                 self.conn.add(rand_peer)
-                msg = Message(GossipMessageType.GRAFT, 0, self.id, rand_peer, False, 0, '')
+                msg = Message(MessageType.GRAFT, 0, self.id, rand_peer, False, 0, '')
                 self.out_msgs.append(msg)
         else: 
             pass
@@ -174,7 +176,7 @@ class Node:
         if rand < 0.33:
             # remove a random connection
             rand_conn = self.conn.pop()
-            msg = Message(GossipMessageType.PRUNE, 0, self.id, rand_conn, False)
+            msg = Message(MessageType.PRUNE, 0, self.id, rand_conn, False)
             self.out_msgs.append(msg)
         elif rand < 0.66:
             # add a random honest connection
@@ -183,7 +185,7 @@ class Node:
                 rand_honest = random.randint(0, N_PUB + N_LURK-1)
             self.conn.add(rand_honest)
             self.peers.add(rand_honest)
-            msg = Message(GossipMessageType.GRAFT, 0, self.id, rand_honest, False)
+            msg = Message(MessageType.GRAFT, 0, self.id, rand_honest, False)
             self.out_msgs.append(msg)
 
     # # # # # # # # # 
@@ -223,7 +225,7 @@ class Graph:
             node = self.nodes[u]
             rand_peer = random.choice(node.peers)
             node.conn.add(rand_peer)
-            msg = Message(GossipMessageType.GRAFT, 0, u, rand_peer, False)
+            msg = Message(MessageType.GRAFT, 0, u, rand_peer, False)
             node.out_msgs.append(msg)
         pass
 

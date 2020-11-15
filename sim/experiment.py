@@ -3,6 +3,8 @@ from network import Network
 from messages import *
 from config import *
 from graph import State
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 class Snapshot:
     def __init__(self):
@@ -28,7 +30,7 @@ class Experiment:
     def start(self, epoch):
         for r in range(epoch):
             # periodically gen hearbeat
-            
+            self.schedule_heartbeat(r)    
             # network store messages from honest nodes
             self.push_honest_msgs(r)
             # start attack
@@ -42,10 +44,10 @@ class Experiment:
     def schedule_heartbeat(r):
         if r!=0 and r%self.heartbeat_period==0:
             self.network.gen_heartbeat()
-        elif r!=1 and r%self.heartbeat_period==1:
-            self.network.gen_heartbeat()
-        elif r!=2 and r%self.heartbeat_period==2:
-            self.network.gen_heartbeat()
+        # elif r!=1 and r%self.heartbeat_period==1:
+            # self.network.gen_heartbeat()
+        # elif r!=2 and r%self.heartbeat_period==2:
+            # self.network.gen_heartbeat()
 
     # honest nodes push msg to network
     def push_honest_msgs(self, curr_r):

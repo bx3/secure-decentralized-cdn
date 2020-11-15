@@ -26,10 +26,13 @@ TIMEOUT = 4 # round
 
 D_OUT = 8 # min outbound connection per peer
 
+GOSSIP_FACTOR = 0.25
+
 class NodeType(Enum):
     PUB = 0
     LURK = 1
     SYBIL = 2
+    BOOTSTRAP = 3 
 
 # class NodeAttr:
     # def __init__(self, node_type):
