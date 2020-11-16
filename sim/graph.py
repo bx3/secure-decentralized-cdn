@@ -104,16 +104,6 @@ class Node:
         for p in self.peers:
             self.scores[p] = PeerScoreCounter()
 
-    # TODO compute scores
-    def compute_score(self, peer):
-        score = 0
-        # TODO if not peer add one
-        # counters = self.D_score[peer]
-        # compute counters ...
-    
-        
-
-        return score
 
     # TODO later out_msgs might not be empties instanteously due to upload bandwidth
     def send_msgs(self):
@@ -249,7 +239,7 @@ class Node:
         _, _, src, _, _, _, _ = msg
         if src in self.mesh:
             self.mesh.pop(src, None)
-        pass
+         
 
     # the other peer has added me to its mesh, I will add it too 
     def proc_GRAFT(self, msg):
