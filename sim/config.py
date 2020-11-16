@@ -32,6 +32,11 @@ GOSSIP_FACTOR = 0.25
 NUM_TRANS_PER_SEC = 120
 TRANS_SIZE = 2e3 # bytes
 
+CTRL_MSG_LEN = 0
+
+INIT_NUM_KNOWN_PEER = OVERLAY_D*2
+
+assert(N_PUB + N_LURK > OVERLAY_D)
 
 class NodeType(Enum):
     PUB = 0

@@ -3,6 +3,7 @@ from config import *
 import random
 from collections import namedtuple
 from messages import *
+import sys
 
 State = namedtuple('State', ['role', 'conn', 'mesh', 'peers', 'out_msgs', 'scores'])
 
@@ -23,6 +24,8 @@ class PeerScoreCounter:
         self.P4 = 0 # num invalid message uncapped
         self.P5 = 0 # application specific
         self.P6 = 0 # node id collocation
+        # temporary
+        self.fake_score = 0
 
     # TODO update all counters
     def update(self):
@@ -36,19 +39,27 @@ class PeerScoreCounter:
     def get_counters(self):
         pass
 
+    def get_score(self):
+        pass
+
+    def get_fake_score(self):
+        self.fake_score += random.uniform(-1,1)
+        return self.fake_score
+
 
 # generic data structure usable by all protocols
 class Node:
     def __init__(self, role, u):
         self.role = role
         self.conn = set() # lazy push
-        self.mesh = set() # mesh push
+        self.mesh = {} # mesh push
         self.peers = set() # known peers
         self.out_msgs = [] # msg to push in the next round
-        self.D_scores = {} # mesh peer score, key is peer, value is PeerScoreCounter
+        self.D_scores = 6 #
+        self.scores = {} # all peer score, key is peer, value is PeerScoreCounter
         self.id = u # my id
-        self.D = 0 # curr in local mesh degree: incoming + outgoing
-        self.D_out = 0 # num outgoing connections in the mesh
+        self.D = 8 # curr in local mesh degree: incoming + outgoing
+        self.D_out = 2 # num outgoing connections in the mesh; D_out < OVERLAY_DLO and D_out < D/2
         # useful later 
         self.loc = (0,0) # for compute propagation delay
         self.down_bd = BANDWIDTH # for compute transmission delay
@@ -56,6 +67,7 @@ class Node:
         self.num_rx_trans = 0
         self.num_tx_trans = 0
         self.topics = set()
+        self.preset_honest_peers()
 
     # worker func 
     def process_msgs(self, msgs):
@@ -80,12 +92,27 @@ class Node:
 
         #self.update()
 
+    def preset_honest_peers(self):
+        peers = set()
+        while 1:
+            v = get_rand_honest()
+            if v not in peers and v != self.id:
+                peers.add(v)
+                if len(peers) == INIT_NUM_KNOWN_PEER:
+                    break
+        self.peers = peers
+        for p in self.peers:
+            self.scores[p] = PeerScoreCounter()
+
     # TODO compute scores
     def compute_score(self, peer):
         score = 0
         # TODO if not peer add one
         # counters = self.D_score[peer]
         # compute counters ...
+    
+        
+
         return score
 
     # TODO later out_msgs might not be empties instanteously due to upload bandwidth
@@ -100,25 +127,115 @@ class Node:
         trans = None # Message(..)
         self.out_msgs.append(trans)
 
+    def prune_peer(self, peer):
+        # add backoff counter
+        msg = Message(MessageType.PRUNE, 0, self.id, peer, False, CTRL_MSG_LEN, None)
+        self.mesh.pop(peer, None)
+        self.out_msgs.append(msg)
+
+    def graft_peer(self, peer):
+        msg = Message(MessageType.GRAFT, 0, self.id, peer, False, CTRL_MSG_LEN, None)
+        self.mesh[peer] = Direction.Outgoing
+        if peer not in self.scores:
+            self.scores[peer] = PeerScoreCounter()
+        self.out_msgs.append(msg)
+
+
+
     # TODO generate IHave
     def proc_Heartbeat(self, msg):
         nodes = self.get_rand_gossip_nodes()
+        mesh_peers = []
+        # prune neg mesh
+        all_mesh_peers = self.mesh.keys()
+        for u in list(all_mesh_peers):
+            counters = self.scores[u]
+            if counters.get_fake_score() < 0:
+                self.prune_peer(u)
 
-        # prune negative score peer, add positive peer, maintain D_out
-        peers_score = {}
-        peer_keep = set()
-        for peer in self.peers:
-            peers_score[peer] = self.compute_score(peer)
-            peer_keep.add(peer)
+        # add peers if needed
+        if len(self.mesh) < OVERLAY_DLO:
+            candidates = self.get_pos_score_peer()
+            candidates.difference(self.mesh.keys())
+            candidates.difference(self.conn)
+            num_needed = min(len(candidates), self.D-len(self.mesh))
+            new_peers = random.choices(list(candidates), k=num_needed)
+            for u in new_peers:
+                self.graft_peer(u)
 
-        # prune negative peers, peer_keep.remove(peer)
+        # prune peers if needed
+        if len(self.mesh) > OVERLAY_DHI:
+            # get pos score peers
+            mesh_peers_scores = self.get_pos_score_mesh_peers()
+            mesh_peers_scores.sort(key=lambda tup: tup[1], reverse=True)
+            mesh_peers =  [i for i,j in mesh_peers_scores]
+            
+            # shuffle  TODO
+            # mesh_peers
 
-        # keep highest OVERLAY_DSCORE to keep
+            num_out = self.get_num_outgoing(mesh_peers, self.D) 
 
-        # make sure outgoing D_out < OVERLAY_DLO and D_out < D/2
+            # insufficient out
+            if num_out < self.D_out:
+                out_needed = self.D_out - num_out
+                # shift out to front for first D peers
+                mesh_peer_copy = mesh_peers.copy()
+                for idx, u in enumerate(mesh_peer_copy[:self.D]):
+                    d = self.mesh[u]
+                    if d == Direction.Outgoing:
+                        mesh_peers.insert(0, mesh_peers.pop(idx))
+                # shift out to front for remaining peers
+                for u in mesh_peer_copy[self.D:]:
+                    d = self.mesh[u]
+                    if d == Direction.Outgoing:
+                        mesh_peers.insert(0, mesh_peers.pop(idx))
 
-        # graft random peer from self.peers
-        
+            remove_peers = mesh_peers[self.D:]
+            for peer in remove_peers:
+                self.prune_peer(peer)
+
+        # even there is enough mesh, check if there are enough outgoing mesh
+        if len(self.mesh) > OVERLAY_DLO:
+            mesh_peers_scores = self.get_pos_score_mesh_peers()
+            mesh_peers_scores.sort(key=lambda tup: tup[1], reverse=True)
+            mesh_peers = [i for i,j in mesh_peers_scores]
+            num_out = self.get_num_outgoing(mesh_peers, len(self.mesh) ) 
+
+            if num_out < self.D_out:
+                out_needed = self.D_out - num_out
+                candidates = self.get_pos_score_peer()
+                candidates.difference(self.mesh.keys())
+                candidates.difference(self.conn)
+                
+                new_peers = random.choices(list(candidates), k=out_needed)
+                for u in new_peers:
+                    self.graft_peer(u)
+
+    def get_num_outgoing(self, mesh_peers, m):
+        num_out = 0
+        for u in mesh_peers[:m]:
+            assert( u in self.mesh)
+            d = self.mesh[u]
+            if d == Direction.Outgoing:
+                num_out += 1
+        return num_out
+
+    def get_pos_score_mesh_peers(self):
+        mesh_peers = []
+        for u in list(self.mesh.keys()):
+            counters = self.scores[u];
+            score = counters.get_fake_score()
+            if score >= 0:
+                mesh_peers.append((u, score))
+        return mesh_peers
+
+    def get_pos_score_peer(self):
+        pool = set()
+        for u, counters in self.scores.items():
+            score = counters.get_fake_score()
+            if score >= 0:
+                pool.add(u)
+        return pool
 
     # send IWANT to self.out_msgs
     def proc_IHAVE(self, msg):
@@ -131,13 +248,14 @@ class Node:
     def proc_PRUNE(self, msg):
         _, _, src, _, _, _, _ = msg
         if src in self.mesh:
-            self.mesh.remove(src)
+            self.mesh.pop(src, None)
         pass
 
     # the other peer has added me to its mesh, I will add it too 
     def proc_GRAFT(self, msg):
         _, _, src, _, _, _, _ = msg
-        self.mesh.add(src)
+        self.mesh[src] = Direction.Incoming
+        self.scores[src] = PeerScoreCounter()
         self.peers.add(src)
 
     def proc_LEAVE(self, msg):
@@ -168,21 +286,29 @@ class Node:
             # pass
             # self.random_change()
 
-    # def random_change(self):
+    def rand_walk_score(self):
+        for u, counters in scores.items():
+            counters.update_fake_score()
+
+    # def shuffle_rand_peer(self):
         # rand = random.random()
         # if rand < 0.33:
             # # remove a random connection
-            # rand_conn = self.conn.pop()
-            # msg = Message(MessageType.PRUNE, 0, self.id, rand_conn, False)
+            # rand_conn = self.mesh.pop()
+            # msg = Message(MessageType.PRUNE, 0, self.id, rand_conn, False, CTRL_MSG_LEN, None)
+            # self.out_msgs.append(msg)
+            # # recommend peer a list of peer
+            # payload = PX(list(self.peers))
+            # msg = Message(MessageType.PX, 0, self.id, rand_conn, False, CTRL_MSG_LEN, payload)
             # self.out_msgs.append(msg)
         # elif rand < 0.66:
             # # add a random honest connection
             # rand_honest = random.randint(0, N_PUB + N_LURK-1)
             # while rand_honest in self.conn:
                 # rand_honest = random.randint(0, N_PUB + N_LURK-1)
-            # self.conn.add(rand_honest)
+            # self.mesh.add(rand_honest)
             # self.peers.add(rand_honest)
-            # msg = Message(MessageType.GRAFT, 0, self.id, rand_honest, False)
+            # msg = Message(MessageType.GRAFT, 0, self.id, rand_honest, False, CTRL_MSG_LEN, None)
             # self.out_msgs.append(msg)
 
     # # # # # # # # # 
@@ -193,7 +319,7 @@ class Node:
 
     # return State, remember to return a copy
     def get_states(self):
-        return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), self.D_scores.copy())
+        return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), self.scores.copy())
 
 
 class Graph:

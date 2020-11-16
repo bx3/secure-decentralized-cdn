@@ -4,7 +4,7 @@ import os
 from experiment import Experiment
 from config import *
 
-epoch = 100 # round 
+epoch = 200 # round 
 heartbeat = HEARTBEAT
 
 gossipsub = Experiment(heartbeat)

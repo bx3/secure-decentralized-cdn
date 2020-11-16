@@ -40,6 +40,7 @@ class Experiment:
     #  main loop  #
     # # # # # # # # 
     def start(self, epoch):
+        print(self.heartbeat_period)
         for r in range(epoch):
             # periodically gen hearbeat
             self.schedule_heartbeat(r)    
@@ -54,8 +55,8 @@ class Experiment:
 
     # three heartbeat
     def schedule_heartbeat(self, r):
-        if r!=0 and r%self.heartbeat_period==0:
-            self.network.gen_heartbeats()
+        if r%self.heartbeat_period==0:
+            self.network.deliver_heartbeats(r)
         # elif r!=1 and r%self.heartbeat_period==1:
             # self.network.gen_heartbeat()
         # elif r!=2 and r%self.heartbeat_period==2:
@@ -91,18 +92,21 @@ class Experiment:
             snapshot.nodes[u] = node.get_states()
         # get network 
         snapshot.network = self.network.queues.copy()
+        
         self.snapshots.append(snapshot)
 
     # TODO we will need to save snapshot and do analysis separately when experiment becomes large
     def analyze_snapshot(self):
         degrees = []
         components = []
+        i = 0
         for snapshot in self.snapshots:
             degree = []
             sets = {}
             for u in snapshot.nodes:
                 node_state = snapshot.nodes[u]
-                degree.append(len([node_state.mesh]))
+
+                degree.append(len(node_state.mesh))
                 sets[u] = DisjointSet()
             degrees.append(degree)
 
@@ -111,6 +115,7 @@ class Experiment:
                 for vtx in snapshot.nodes[u].mesh:
                     sets[u].union(sets[vtx])
             components.append(len(set(x.find() for x in sets.values())))
+            i += 1
 
         # degree changes
         degrees_mean = []

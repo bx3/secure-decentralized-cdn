@@ -1,5 +1,7 @@
 from config import *
 import math
+from messages import Message
+from messages import MessageType
 
 # x and y are coordinates
 def get_dist(x, y):
@@ -8,6 +10,8 @@ def get_dist(x, y):
 class Network:
     def __init__(self, num_node):
         self.queues = {} # key is node id, value is msg queue
+        self.id = -1 # special id reserved for network
+        self.seqno = 0 # sequence number
         self.link_bandwidth = {}
         for i in range(num_node):
             self.queues[i] = [] # tagged message queue (delivery_round, msg)
@@ -24,7 +28,8 @@ class Network:
     def get_msgs(self, u, curr_r):
         messages = []
         future_msgs = []
-        for r, msg in self.queues[u]:
+        for tagged_msg in self.queues[u]:
+            r, msg = tagged_msg
             if r <= curr_r:
                 messages.append(msg)
             else:
@@ -37,9 +42,7 @@ class Network:
         for msg in msgs:
             mtype, mid, src, dst, adv, length, payload = msg
             # TODO add delay to TRANS type msg
-            tagged_msg = (curr_r, msg)
-            self.queues[dst].append(tagged_msg)
-            assert(len(self.queues[dst]) < NETWORK_QUEUE_LIM)
+            self.enqueue_msg(msg, curr_r, dst)
 
     # TODO transmission and propogation delay
     def compute_delay(self, src, dst):
@@ -50,33 +53,41 @@ class Network:
         # target_r = curr_r + math.floor((length/lb)/MILLISEC_PER_ROUND)
         #return  target_r
 
-    # TODO
-    def gen_heartbeats(self):
+    # every heartbeat msg contains unique seqno
+    def gen_heartbeat_msg(self, dst):
+        mid = (self.id, self.seqno)
+        msg = Message(MessageType.HEARTBEAT, mid, self.id, dst, False, CTRL_MSG_LEN, None)
+        self.seqno += 1
+        return msg
+
+    def enqueue_msg(self, msg, r, dst):
+        tagged_msg = (r, msg)
+        self.queues[dst].append(tagged_msg)
+        assert(len(self.queues[dst]) < NETWORK_QUEUE_LIM)
+
+    def deliver_heartbeats(self, curr_r):
         # TODO PUB only
         for u, _ in self.queues.items():
-            # generate HEARTBEAT msg to every queue
-            pass 
-
-
-
+            heartbeat_msg = self.gen_heartbeat_msg(u)
+            self.enqueue_msg(heartbeat_msg, curr_r, u)
 
     def add_node(self, i):
         assert( i not in self.queues)
         self.queues[i] = []
-        for j in graph.nodes:
-            self.link_bandwidth[(i,j)] = BANDWIDTH #TODO choose right bandwidth
-            self.link_bandwidth[(j,i)] = BANDWIDTH
+        # for j in graph.nodes:
+            # self.link_bandwidth[(i,j)] = BANDWIDTH #TODO choose right bandwidth
+            # self.link_bandwidth[(j,i)] = BANDWIDTH
 
     def remove_node(self, i):
         self.queues.pop(i, None)
-        rm_link_set = set()
-        for j in graph.nodes:
-            if (i, j) in self.link_bandwidth: 
-                rm_link_set.add((i,j))
-            elif (j, i) in self.link_bandwidth:
-                rm_link_set.add((j,i))
-        for l in rm_link_set:
-            del self.link_bandwidth[l]
+        # rm_link_set = set()
+        # for j in graph.nodes:
+            # if (i, j) in self.link_bandwidth: 
+                # rm_link_set.add((i,j))
+            # elif (j, i) in self.link_bandwidth:
+                # rm_link_set.add((j,i))
+        # for l in rm_link_set:
+            # del self.link_bandwidth[l]
 
     def reorder_msgs(self):
         pass
