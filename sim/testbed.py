@@ -6,8 +6,9 @@ from config import *
 
 epoch = 200 # round 
 heartbeat = HEARTBEAT
+prob = 0.5
 
-gossipsub = Experiment(heartbeat)
+gossipsub = Experiment(heartbeat, prob)
 gossipsub.start(epoch)
 gossipsub.analyze_snapshot()
 

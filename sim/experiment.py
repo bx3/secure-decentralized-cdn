@@ -27,10 +27,10 @@ class DisjointSet(object):
             us.parent = them
 
 class Experiment:
-    def __init__(self, heartbeat):
+    def __init__(self, heartbeat, prob):
         self.snapshots = []
         self.network = Network(N_PUB+N_LURK+N_SYBIL)
-        self.graph = Graph(N_PUB, N_LURK, N_SYBIL)
+        self.graph = Graph(N_PUB, N_LURK, N_SYBIL, prob)
         # init nodes and bandwidth
         self.graph.preset_known_peers()
         self.network.setup_link_bandwidth(self.graph)
@@ -82,7 +82,7 @@ class Experiment:
         # node process messages
         for u, node in self.graph.nodes.items():
             msgs = self.network.get_msgs(u, curr_r)
-            node.process_msgs(msgs)
+            node.process_msgs(msgs, curr_r)
 
     def take_snapshot(self, r):
         snapshot = Snapshot()
@@ -139,7 +139,7 @@ class Experiment:
         
         # number of connectted component
         x_points = [ i for i in range(len(degrees))]
-        axs[1].set_yscale('log')
+        #axs[1].set_yscale('log')
         axs[1].scatter(x_points, components)
         axs[1].set(ylabel='# components', xlabel='round')
         

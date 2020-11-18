@@ -39,12 +39,16 @@ class PeerScoreCounter:
         # temporary
         self.fake_score = 0
 
+    def init_r(self, r):
+        self.r = r
+
     # TODO update all counters
     def update_p1(self, r):
         # time in mesh
         delta_sec = (r - self.r)*LINK_LATENCY/1000.0
         self.P1 += delta_sec
         self.r = r
+
     def update_p2(self):
         # num first msg from, when first get the message
         self.P2 += 1
@@ -112,7 +116,7 @@ class PeerScoreCounter:
 
 # generic data structure usable by all protocols
 class Node:
-    def __init__(self, role, u):
+    def __init__(self, role, u, prob):
         self.role = role
         self.conn = set() # lazy push
         self.mesh = {} # mesh push
@@ -131,15 +135,17 @@ class Node:
         self.num_tx_trans = 0
         self.topics = set()
         self.preset_honest_peers()
+        self.msg_set = set()
+        self.trans_prob = prob
 
     # worker func 
-    def process_msgs(self, msgs):
+    def process_msgs(self, msgs, r):
         # update local state
         for msg in msgs:
             mtype, _, _, dst, _, _, _ = msg
             assert self.id == dst
             if mtype == MessageType.GRAFT:
-                self.proc_GRAFT(msg)
+                self.proc_GRAFT(msg, r)
             elif mtype == MessageType.PRUNE:
                 self.proc_PRUNE(msg)
             elif mtype == MessageType.LEAVE:
@@ -151,9 +157,18 @@ class Node:
             elif mtype == MessageType.PX:
                 self.proc_PX(msg)
             elif mtype == MessageType.HEARTBEAT:
-                self.proc_Heartbeat(msg)
+                self.proc_Heartbeat(msg, r)
+            elif mtype == MessageType.TRANS:
+                self.proc_TRANS(msg)
+                self.scores[dst].update_p1(r)
 
         #self.update()
+    def proc_TRANS(self, msg):
+        _, mid, src, _, _, _, _ = msg
+        if mid not in self.msg_set:
+            self.msg_set.add(msg.id)
+            self.scores[src].update_p1()
+    
 
     def preset_honest_peers(self):
         peers = set()
@@ -177,6 +192,7 @@ class Node:
 
     # TODO add random  transactions 
     def gen_trans(self):
+
         trans = None # Message(..)
         self.out_msgs.append(trans)
 
@@ -186,24 +202,26 @@ class Node:
         self.mesh.pop(peer, None)
         self.out_msgs.append(msg)
 
-    def graft_peer(self, peer):
+    def graft_peer(self, peer, r):
         msg = Message(MessageType.GRAFT, 0, self.id, peer, False, CTRL_MSG_LEN, None)
         self.mesh[peer] = Direction.Outgoing
         if peer not in self.scores:
             self.scores[peer] = PeerScoreCounter()
+        self.scores[peer].init_r(r)
         self.out_msgs.append(msg)
 
 
 
     # TODO generate IHave
-    def proc_Heartbeat(self, msg):
+    def proc_Heartbeat(self, msg, r):
         nodes = self.get_rand_gossip_nodes()
         mesh_peers = []
         # prune neg mesh
         all_mesh_peers = self.mesh.keys()
         for u in list(all_mesh_peers):
             counters = self.scores[u]
-            if counters.get_fake_score() < 0:
+            if counters.get_score() < 0:
+                self.scores[u].update_p3b(-counters.get_score())
                 self.prune_peer(u)
 
         # add peers if needed
@@ -214,7 +232,7 @@ class Node:
             num_needed = min(len(candidates), self.D-len(self.mesh))
             new_peers = random.choices(list(candidates), k=num_needed)
             for u in new_peers:
-                self.graft_peer(u)
+                self.graft_peer(u, r)
 
         # prune peers if needed
         if len(self.mesh) > OVERLAY_DHI:
@@ -262,7 +280,7 @@ class Node:
                 
                 new_peers = random.choices(list(candidates), k=out_needed)
                 for u in new_peers:
-                    self.graft_peer(u)
+                    self.graft_peer(u, r)
 
     def get_num_outgoing(self, mesh_peers, m):
         num_out = 0
@@ -277,7 +295,7 @@ class Node:
         mesh_peers = []
         for u in list(self.mesh.keys()):
             counters = self.scores[u];
-            score = counters.get_fake_score()
+            score = counters.get_score()
             if score >= 0:
                 mesh_peers.append((u, score))
         return mesh_peers
@@ -285,7 +303,7 @@ class Node:
     def get_pos_score_peer(self):
         pool = set()
         for u, counters in self.scores.items():
-            score = counters.get_fake_score()
+            score = counters.get_score()
             if score >= 0:
                 pool.add(u)
         return pool
@@ -305,7 +323,7 @@ class Node:
          
 
     # the other peer has added me to its mesh, I will add it too 
-    def proc_GRAFT(self, msg):
+    def proc_GRAFT(self, msg, r):
         _, _, src, _, _, _, _ = msg
         self.mesh[src] = Direction.Incoming
         self.scores[src] = PeerScoreCounter()
@@ -341,7 +359,7 @@ class Node:
 
     def rand_walk_score(self):
         for u, counters in scores.items():
-            counters.update_fake_score()
+            counters.update_score()
 
     # def shuffle_rand_peer(self):
         # rand = random.random()
@@ -376,14 +394,14 @@ class Node:
 
 
 class Graph:
-    def __init__(self, p,l,s):
+    def __init__(self, p,l,s,prob):
         self.nodes = {}
         for i in range(p):
-            self.nodes[i] = Node(NodeType.PUB, i) 
+            self.nodes[i] = Node(NodeType.PUB, i, prob) 
         for i in range(p,p+l):
-            self.nodes[i]= Node(NodeType.LURK, i)
+            self.nodes[i]= Node(NodeType.LURK, i, prob)
         for i in range(p+l, p+l+s):
-            self.nodes[i] = Node(NodeType.SYBIL, i)
+            self.nodes[i] = Node(NodeType.SYBIL, i, prob)
         print("total num node", len(self.nodes))
 
     # set honests peers to each node, populate node.conn
