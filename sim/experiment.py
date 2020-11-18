@@ -3,6 +3,7 @@ from network import Network
 from messages import *
 from config import *
 from graph import State
+import attacks
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
@@ -35,6 +36,7 @@ class Experiment:
         self.graph.preset_known_peers()
         self.network.setup_link_bandwidth(self.graph)
         self.heartbeat_period = heartbeat
+        self.adversary = attacks.Adversary()
 
     # # # # # # # # 
     #  main loop  #
@@ -71,7 +73,7 @@ class Experiment:
 
     def act_adversarirs(self, r):
         # examine network in curr round r
-        pass
+        # self.adversary
         # chosen attack strategy to generate new messgae and arrange network 
         adv_msgs = []
         self.network.deliver_msgs(adv_msgs, r)
