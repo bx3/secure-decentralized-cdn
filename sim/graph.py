@@ -395,6 +395,7 @@ class Node:
 
 class Graph:
     def __init__(self, p,l,s,prob):
+        random.seed(0)
         self.nodes = {}
         for i in range(p):
             self.nodes[i] = Node(NodeType.PUB, i, prob) 

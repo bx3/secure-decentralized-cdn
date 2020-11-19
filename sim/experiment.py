@@ -33,7 +33,7 @@ class Experiment:
         self.network = Network(N_PUB+N_LURK+N_SYBIL)
         self.graph = Graph(N_PUB, N_LURK, N_SYBIL, prob)
         # init nodes and bandwidth
-        self.graph.preset_known_peers()
+        #  self.graph.preset_known_peers()
         self.network.setup_link_bandwidth(self.graph)
         self.heartbeat_period = heartbeat
         self.adversary = attacks.Adversary()
@@ -42,7 +42,6 @@ class Experiment:
     #  main loop  #
     # # # # # # # # 
     def start(self, epoch):
-        print(self.heartbeat_period)
         for r in range(epoch):
             # periodically gen hearbeat
             self.schedule_heartbeat(r)    
@@ -142,7 +141,7 @@ class Experiment:
         # number of connectted component
         x_points = [ i for i in range(len(degrees))]
         #axs[1].set_yscale('log')
-        axs[1].scatter(x_points, components)
+        axs[1].plot(x_points, components)
         axs[1].set(ylabel='# components', xlabel='round')
         
         plt.show()
