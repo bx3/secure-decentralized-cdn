@@ -3,145 +3,58 @@ from config import *
 import random
 from collections import namedtuple
 from messages import *
+from scores import PeerScoreCounter
 import sys
 
 State = namedtuple('State', ['role', 'conn', 'mesh', 'peers', 'out_msgs', 'scores'])
 
-def get_rand_honest():
-    return random.randint(0, N_PUB + N_LURK-1)
-
-def get_rand_sybil():
-    return random.randint(N_PUB + N_LURK, N_PUB + N_LURK + N_SYBIL - 1)
+class Peer:
+    def __init__(self, direciton):
+        self.direction = direction
+        self.counter = PeerScoreCounter()
 
 # assume there is only one topic then
-class PeerScoreCounter:
-    def __init__(self):
-        self.r = 0 # the lastest update round
-        self.W1 = TIME_IN_MESH_WEIGHT
-        self.P1 = 0 # time in mesh
-
-        self.W2 = FIRST_MESSAGE_DELIVERIES_WEIGHT
-        self.P2 = 0 # num first message from 
-
-        self.msg_delivery = 0
-        self.W3a = MESH_MESSAGE_DELIVERIES_WEIGHT
-        self.P3a = 0 # num message failure rate, need to a window
-
-        self.W3b = MESH_FAILURE_PENALTY_WEIGHT
-        self.P3b = 0 # num mesh message deliver failure
-        self.W4 = INVALID_MESSAGE_DELIVERIES_WEIGHT
-        self.P4 = 0 # num invalid message uncapped
-        self.W5 = TOPIC_WEIGHT
-        self.P5 = 0 # application specific
-        self.W6 = -0.1
-        self.P6 = 0 # node id collocation
-        self.score = 0
-        # temporary
-        self.fake_score = 0
-
-    def init_r(self, r):
-        self.r = r
-
-    # TODO update all counters
-    def update_p1(self, r):
-        # time in mesh
-        delta_sec = (r - self.r)*LINK_LATENCY/1000.0
-        self.P1 += delta_sec
-        self.r = r
-
-    def update_p2(self):
-        # num first msg from, when first get the message
-        self.P2 += 1
-
-    def msg_delivery(self):
-        # count the # of msgs delivered in the window
-        self.msg_delivery += 1
-
-    def update_p3a(self):
-        # mesh message deliveries, when window ends
-        # update p3a, and reset # of msg delivery 
-        if self.msg_delivery >= MESH_MESSAGE_DELIVERIES_THRESHOLD:
-            self.P3a = 0
-        else:
-            self.P3a = (MESH_MESSAGE_DELIVERIES_THRESHOLD-self.msg_delivery)**2
-        self.msg_delivery = 0
-
-    def update_p3b(self, rate_deficit):
-        # Whenever a peer is pruned with a negative score, the parameter is augmented by the rate deficit at the time of prune.
-        self.P3b += rate_deficit
-    def update_p4(self):
-        # invalid messages, when get the invalid message
-        self.P4 += 1
-
-    def update_p5(self):
-        # TODO
-        pass
-    def update_p6(self):
-        # TODO
-        pass
-
-    # TODO add decay to all counters, see section 5.2
-    def decay(self):
-        self.W2 *= FIRST_MESSAGE_DELIVERIES_DECAY
-        self.W3a *= MESH_MESSAGE_DELIVERIES_DECAY
-        self.W3b *= MESH_FAILURE_PENALTY_DECAY 
-        self.W4 *= INVALID_MESSAGE_DELIVERIES_DECAY
-    
-    # TODO implement window-ed counters 
-    def get_counters(self):
-        pass
-
-    def get_score(self):
-        score1 = self.W1 * self.P1
-        if score1 > TIME_IN_MESH_CAP:
-            score1 = TIME_IN_MESH_CAP
-        score2 = self.W2 * self.P2
-        if score2 > FIRST_MESSAGE_DELIVERIES_CAP:
-            score2 = FIRST_MESSAGE_DELIVERIES_CAP 
-        score3a = self.W3a * self.P3a
-        if score3a < (-MESH_MESSAGE_DELIVERIES_CAP):
-            score3a = -MESH_MESSAGE_DELIVERIES_CAP
-        score3b = self.W3b * self.P3b
-        score4 = self.W4 * self.P4
-        score5 = self.W5 * self.P5
-        score6 = self.W6 * self.P6
-
-        self.score = score1 + score2 + score3a + score3b + score4 + score5 + score6 
-        return self.score
-
-    def get_fake_score(self):
-        self.fake_score += random.uniform(-1,1)
-        return self.fake_score
-
-
 # generic data structure usable by all protocols
 class Node:
-    def __init__(self, role, u, prob):
+    def __init__(self, role, u, prob, peers, heartbeat_period):
+        self.id = u # my id
         self.role = role
         self.conn = set() # lazy push
         self.mesh = {} # mesh push
-        self.peers = set() # known peers
+
+        self.peers = set(peers) # known peers
         self.out_msgs = [] # msg to push in the next round
+        self.in_msgs = []
         self.D_scores = 6 #
         self.scores = {} # all peer score, key is peer, value is PeerScoreCounter
-        self.id = u # my id
+        self.seqno = 0
         self.D = 8 # curr in local mesh degree: incoming + outgoing
         self.D_out = 2 # num outgoing connections in the mesh; D_out < OVERLAY_DLO and D_out < D/2
+
+        self.init_peers_scores()
+        self.gen_prob = prob
+        self.msg_ids = set()
+        self.heartbeat_period = heartbeat_period
+
         # useful later 
-        self.loc = (0,0) # for compute propagation delay
-        self.down_bd = BANDWIDTH # for compute transmission delay
-        self.up_bd = BANDWIDTH
-        self.num_rx_trans = 0
-        self.num_tx_trans = 0
         self.topics = set()
-        self.preset_honest_peers()
-        self.msg_set = set()
-        self.trans_prob = prob
+
+    def insert_msg_buff(self, msgs):
+        self.in_msgs += msgs # append
+
+    def run_scores_background(self, curr_r):
+        for u, counters in self.scores.items():
+            counters.run_background(curr_r)
 
     # worker func 
-    def process_msgs(self, msgs, r):
-        # update local state
-        for msg in msgs:
+    def process_msgs(self, r):
+        # schedule heartbeat 
+        self.schedule_heartbeat(r)
+        # background peer local view update
+        self.run_scores_background(r)
+        # handle msgs 
+        while len(self.in_msgs) > 0:
+            msg = self.in_msgs.pop(0)
             mtype, _, _, dst, _, _, _ = msg
             assert self.id == dst
             if mtype == MessageType.GRAFT:
@@ -160,27 +73,48 @@ class Node:
                 self.proc_Heartbeat(msg, r)
             elif mtype == MessageType.TRANS:
                 self.proc_TRANS(msg)
-                self.scores[dst].update_p1(r)
+        
+        if self.role == NodeType.PUB:
+            self.gen_trans()
 
-        #self.update()
+    def schedule_heartbeat(self, r):
+        if self.role == NodeType.PUB or self.role == NodeType.LURK:
+            # someone is connected with me in mesh
+            if (r%self.heartbeat_period) == HEARTBEAT_START:
+                self.gen_heartbeat()
+
+    def gen_heartbeat(self):
+        for peer in self.peers:
+            msg = self.gen_msg(MessageType.HEARTBEAT, peer, CTRL_MSG_LEN, None)
+            self.out_msgs.append(msg)
+
+    # only gen transaction when previous one is at least pushed 
+    def gen_trans(self):
+        for msg in self.out_msgs:
+            mtype, _, _, _, _, _, _ = msg
+            if mtype == MessageType.TRANS:
+                return
+
+        if random.random() < self.gen_prob:
+            for peer in self.mesh:
+                msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, None)
+                self.out_msgs.append(msg)
+
     def proc_TRANS(self, msg):
         _, mid, src, _, _, _, _ = msg
-        if mid not in self.msg_set:
-            self.msg_set.add(msg.id)
-            self.scores[src].update_p1()
+        # if not seen msg before
+        if mid not in self.msg_ids:
+            self.msg_ids.add(mid)
+            self.scores[src].update_p2()
     
-
-    def preset_honest_peers(self):
-        peers = set()
-        while 1:
-            v = get_rand_honest()
-            if v not in peers and v != self.id:
-                peers.add(v)
-                if len(peers) == INIT_NUM_KNOWN_PEER:
-                    break
-        self.peers = peers
+    def init_peers_scores(self):
         for p in self.peers:
             self.scores[p] = PeerScoreCounter()
+
+    def gen_msg(self, mtype, peer, msg_len, payload):
+        msg = Message(mtype, self.seqno, self.id, peer, self.role, msg_len, payload)
+        self.seqno += 1
+        return msg
 
 
     # TODO later out_msgs might not be empties instanteously due to upload bandwidth
@@ -190,27 +124,19 @@ class Node:
         self.out_msgs = []
         return out_msg
 
-    # TODO add random  transactions 
-    def gen_trans(self):
-
-        trans = None # Message(..)
-        self.out_msgs.append(trans)
-
     def prune_peer(self, peer):
         # add backoff counter
-        msg = Message(MessageType.PRUNE, 0, self.id, peer, False, CTRL_MSG_LEN, None)
+        msg = self.gen_msg(MessageType.PRUNE, peer, CTRL_MSG_LEN, None)
         self.mesh.pop(peer, None)
         self.out_msgs.append(msg)
 
     def graft_peer(self, peer, r):
-        msg = Message(MessageType.GRAFT, 0, self.id, peer, False, CTRL_MSG_LEN, None)
+        msg = self.gen_msg(MessageType.GRAFT, peer, CTRL_MSG_LEN, None)
         self.mesh[peer] = Direction.Outgoing
         if peer not in self.scores:
             self.scores[peer] = PeerScoreCounter()
         self.scores[peer].init_r(r)
         self.out_msgs.append(msg)
-
-
 
     # TODO generate IHave
     def proc_Heartbeat(self, msg, r):
@@ -357,9 +283,9 @@ class Node:
             # pass
             # self.random_change()
 
-    def rand_walk_score(self):
-        for u, counters in scores.items():
-            counters.update_score()
+    # def rand_walk_score(self):
+        # for u, counters in scores.items():
+            # counters.update_score()
 
     # def shuffle_rand_peer(self):
         # rand = random.random()
@@ -382,48 +308,43 @@ class Node:
             # msg = Message(MessageType.GRAFT, 0, self.id, rand_honest, False, CTRL_MSG_LEN, None)
             # self.out_msgs.append(msg)
 
-    # # # # # # # # # 
-    # read node     # 
-    # # # # # # # # #  
-    def get_conn(self):
-        return self.conn
 
     # return State, remember to return a copy
     def get_states(self):
         return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), self.scores.copy())
 
 
-class Graph:
-    def __init__(self, p,l,s,prob):
-        random.seed(0)
-        self.nodes = {}
-        for i in range(p):
-            self.nodes[i] = Node(NodeType.PUB, i, prob) 
-        for i in range(p,p+l):
-            self.nodes[i]= Node(NodeType.LURK, i, prob)
-        for i in range(p+l, p+l+s):
-            self.nodes[i] = Node(NodeType.SYBIL, i, prob)
-        print("total num node", len(self.nodes))
+# class Graph:
+    # def __init__(self, p,l,s,prob):
+        # random.seed(0)
+        # self.nodes = {}
+        # for i in range(p):
+            # self.nodes[i] = Node(NodeType.PUB, i, prob) 
+        # for i in range(p,p+l):
+            # self.nodes[i]= Node(NodeType.LURK, i, prob)
+        # for i in range(p+l, p+l+s):
+            # self.nodes[i] = Node(NodeType.SYBIL, i, prob)
+        # print("total num node", len(self.nodes))
 
-    # set honests peers to each node, populate node.conn
-    def preset_known_peers(self):
-        for u in self.nodes:
-            peers = self.get_rand_honests(u)
-            self.nodes[u].peers = peers
+    # # set honests peers to each node, populate node.conn
+    # def preset_known_peers(self):
+        # for u in self.nodes:
+            # peers = self.get_rand_honests(u)
+            # self.nodes[u].peers = peers
 
-    # u is node
-    def get_rand_honests(self, u):
-        peers = set()
-        attr = self.nodes[u]
-        if attr.role == NodeType.PUB or attr.role == NodeType.LURK:
-            # randomly select D honest node to connect
-            assert(N_PUB + N_LURK > OVERLAY_D)
-            while 1:
-                v = get_rand_honest()
-                if v not in attr.conn and v != u:
-                    peers.add(v)
-                else:
-                    continue
-                if len(peers) == OVERLAY_D:
-                    break
-        return peers 
+    # # u is node
+    # def get_rand_honests(self, u):
+        # peers = set()
+        # attr = self.nodes[u]
+        # if attr.role == NodeType.PUB or attr.role == NodeType.LURK:
+            # # randomly select D honest node to connect
+            # assert(N_PUB + N_LURK > OVERLAY_D)
+            # while 1:
+                # v = get_rand_honest()
+                # if v not in attr.conn and v != u:
+                    # peers.add(v)
+                # else:
+                    # continue
+                # if len(peers) == OVERLAY_D:
+                    # break
+        # return peers 

@@ -123,7 +123,7 @@ def analyze_snapshot(snapshots):
 
     plt.show()
 
-    dump_graph(snapshots[50])
+    #dump_graph(snapshots[50])
 
 
 
