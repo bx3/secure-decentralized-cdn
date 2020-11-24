@@ -6,7 +6,8 @@ from messages import *
 from scores import PeerScoreCounter
 import sys
 
-State = namedtuple('State', ['role', 'conn', 'mesh', 'peers', 'out_msgs', 'scores'])
+State = namedtuple('State', ['role', 'conn', 'mesh', 'peers', 'out_msgs', 'scores', 'mids'])
+TransId = namedtuple('TransId', ['src', 'no'])
 
 class Peer:
     def __init__(self, direciton):
@@ -35,6 +36,7 @@ class Node:
         self.gen_prob = prob
         self.msg_ids = set()
         self.heartbeat_period = heartbeat_period
+        self.gen_trans_num = 0
 
         # useful later 
         self.topics = set()
@@ -97,15 +99,23 @@ class Node:
 
         if random.random() < self.gen_prob:
             for peer in self.mesh:
-                msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, None)
+                trans_id = TransId(self.id, self.gen_trans_num)
+                self.gen_trans_num += 1
+                msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
                 self.out_msgs.append(msg)
 
     def proc_TRANS(self, msg):
-        _, mid, src, _, _, _, _ = msg
+        _, mid, src, _, _, _, payload = msg
         # if not seen msg before
         if mid not in self.msg_ids:
             self.msg_ids.add(mid)
             self.scores[src].update_p2()
+            # push it to other peers in mesh
+            for peer in self.mesh:
+                if peer != src:
+                    msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, payload)
+                    self.out_msgs.append(msg)
+
     
     def init_peers_scores(self):
         for p in self.peers:
@@ -311,7 +321,7 @@ class Node:
 
     # return State, remember to return a copy
     def get_states(self):
-        return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), self.scores.copy())
+        return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), self.scores.copy(), self.msg_ids.copy())
 
 
 # class Graph:

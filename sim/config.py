@@ -19,7 +19,7 @@ SEC_PER_ROUND = MILLISEC_PER_ROUND/1000.0
 # Bandwidth
 NETWORK_QUEUE_LIM = 100
 MAX_BANDWIDTH = 1000000000000
-UPLINK_CONGEST_THRESH = 5 # num message in the up link capacity
+
 
 # message len
 CTRL_MSG_LEN = 0
@@ -31,6 +31,8 @@ OVERLAY_DLO = 6
 OVERLAY_DHI = 12
 OVERLAY_DSCORE = 6
 OVERLAY_DLAZY = 12
+
+UPLINK_CONGEST_THRESH = OVERLAY_DHI  # num message in the up link capacity
 
 
 TIMEOUT = 4 # round
