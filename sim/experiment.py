@@ -7,6 +7,7 @@ import generate_network as gn
 import attacks
 import json
 import sys
+import time
 
 class Snapshot:
     def __init__(self):
@@ -29,18 +30,23 @@ class Experiment:
     # # # # # # # # 
     def start(self, epoch):
         for r in range(epoch):
+            # start = time.time()
             # periodically gen hearbeat MOVED TO NODE
             # self.schedule_heartbeat(r)    
+
             # network store messages from honest nodes
             self.push_honest_msgs(r)
             # start attack
             self.act_adversarirs(r)
             # network deliver msgs
             self.deliver_msgs(r)
+
             # all node retrieve msgs 
             self.all_nodes_handle_msgs(r)    
+
             # take snapshot
             self.take_snapshot(r)
+            #print("round", r, "finish using ", time.time()-start)
         return self.snapshots
 
     # heartbeat
@@ -67,9 +73,12 @@ class Experiment:
         pass
 
     def deliver_msgs(self, curr_r):
+        num_delivered_msg =  0
         dst_msgs = self.network.update()
         for dst, msgs in dst_msgs.items():
             self.nodes[dst].insert_msg_buff(msgs)
+            num_delivered_msg += len(msgs)
+        # print("num deliverd msg", num_delivered_msg)
         # for u, node in self.nodes.items():
             # msgs = self.network.get_msgs(u, curr_r)
             # node.insert_msg_buff(msgs)

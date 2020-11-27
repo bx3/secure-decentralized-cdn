@@ -9,11 +9,11 @@ import random
 random.seed(0)
 
 if len(sys.argv) < 2:
-    print("require subcommand: run, gen-network")
+    print("require subcommand: run, gen-network\n")
     print("run json epoch[int]")
     print("gen-network num_pub[int] num_lurk[int] num_sybil[int] is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] prob[float]") 
-    print('exmaple: ./testbed.py run new_setup.json 100')
-    print('exmaple: ./testbed.py gen-network 90 10 0 n 16 1000000 0 1000000 0 1 > new_setup.json')
+    print('exmaple: ./testbed.py run topo/one_pub.json 100')
+    print('exmaple: ./testbed.py gen-network 10 90 0 n 20 1000000 0 1000000 0 0.5 > ten_pub.json')
     sys.exit()
 
 cmd = sys.argv[1]
@@ -48,6 +48,7 @@ elif cmd == "run":
     heartbeat = HEARTBEAT
     gossipsub = Experiment(setup, heartbeat)
     snapshots = gossipsub.start(epoch)
+    print("start analyze")
     analyze_snapshot(snapshots)
 
 

@@ -70,6 +70,48 @@ def get_components(snapshots):
 
     return components, honest_components
 
+def handle_single_state(trans_recv, reached90_transid, state, node_id):
+    trans_ids = state.transids
+    for trans_id in trans_ids: 
+        if trans_id not in reached90_transid:
+            if trans_id in trans_recv:
+                trans_recv[trans_id].add(node_id)
+            else:
+                trans_recv[trans_id] = set()
+                trans_recv[trans_id].add(node_id)
+
+
+def throughput_90(snapshots):
+    reached90_transid = set()
+    trans_recv = {} # key is trans id, value is a group of receiving nodes
+    acc_recv_msg_hist = [] # acc for accumulative
+    acc_gen_msg_hist =[] 
+
+    for r, snapshot in enumerate(snapshots):
+        nodes = snapshot.nodes
+        num_nodes = len(nodes)
+        acc_gen_msg = 0
+        for u, state in nodes.items():
+            handle_single_state(trans_recv, reached90_transid, state, u)
+            acc_gen_msg += state.gen_trans_num
+
+        # count 
+        remove_tid = [] 
+        for trans_id, recv_grp in trans_recv.items():
+            # print(trans_id, len(recv_grp))
+            if len(recv_grp) > num_nodes * 0.9:
+                reached90_transid.add(trans_id)
+                remove_tid.append(trans_id)
+        # make sure no double count
+        for tid in remove_tid:
+            trans_recv.pop(tid, None)
+        acc_recv_msg_hist.append(len(reached90_transid))
+        acc_gen_msg_hist.append(acc_gen_msg)
+
+    return acc_recv_msg_hist, acc_gen_msg_hist
+
+
+
 def dump_graph(snapshot):
     # dump the graph state of a snapshot to a file
     r = snapshot.round
@@ -102,8 +144,9 @@ def dump_graph(snapshot):
 def analyze_snapshot(snapshots):
     degrees_mean, degrees_max, degrees_min = get_degrees(snapshots)
     components, honest_components = get_components(snapshots)
+    acc_recv_msg_hist, acc_gen_msg_hist = throughput_90(snapshots)
 
-    fig, axs = plt.subplots(3)
+    fig, axs = plt.subplots(4)
     
     axs[0].plot(degrees_mean, 'b', degrees_max, 'r', degrees_min, 'g')
     axs[0].set(ylabel='node degree')
@@ -121,9 +164,17 @@ def analyze_snapshot(snapshots):
     axs[2].plot(x_points, honest_components)
     axs[2].set(ylabel='# honest components', xlabel='round')
 
+    x_points = [ i for i in range(len(acc_recv_msg_hist))]
+    axs[3].plot(x_points, acc_recv_msg_hist)
+    # axs[3].plot(x_points, acc_gen_msg_hist)
+    axs[3].set(ylabel='# completed trans', xlabel='round')
+
     plt.show()
 
     #dump_graph(snapshots[50])
+
+
+
 
 
 

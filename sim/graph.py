@@ -6,7 +6,7 @@ from messages import *
 from scores import PeerScoreCounter
 import sys
 
-State = namedtuple('State', ['role', 'conn', 'mesh', 'peers', 'out_msgs', 'scores', 'mids'])
+State = namedtuple('State', ['role', 'conn', 'mesh', 'peers', 'out_msgs', 'scores', 'transids', 'gen_trans_num'])
 TransId = namedtuple('TransId', ['src', 'no'])
 
 class Peer:
@@ -38,6 +38,9 @@ class Node:
         self.heartbeat_period = heartbeat_period
         self.gen_trans_num = 0
 
+        self.round_trans_ids = set() # keep track of msgs used for analysis
+        self.trans_set = set()
+
         # useful later 
         self.topics = set()
 
@@ -54,6 +57,7 @@ class Node:
         self.schedule_heartbeat(r)
         # background peer local view update
         self.run_scores_background(r)
+        self.round_trans_ids.clear()
         # handle msgs 
         while len(self.in_msgs) > 0:
             msg = self.in_msgs.pop(0)
@@ -93,8 +97,9 @@ class Node:
     # only gen transaction when previous one is at least pushed 
     def gen_trans(self):
         for msg in self.out_msgs:
-            mtype, _, _, _, _, _, _ = msg
-            if mtype == MessageType.TRANS:
+            mtype, _, _, _, _, _, tid = msg
+            # if my last msg is not pushed, give up
+            if mtype == MessageType.TRANS and tid.src == self.id:
                 return
 
         if random.random() < self.gen_prob:
@@ -105,16 +110,19 @@ class Node:
                 self.out_msgs.append(msg)
 
     def proc_TRANS(self, msg):
-        _, mid, src, _, _, _, payload = msg
+        _, mid, src, _, _, _, trans_id = msg
         # if not seen msg before
         if mid not in self.msg_ids:
             self.msg_ids.add(mid)
             self.scores[src].update_p2()
-            # push it to other peers in mesh
-            for peer in self.mesh:
-                if peer != src:
-                    msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, payload)
-                    self.out_msgs.append(msg)
+            self.round_trans_ids.add(trans_id)
+            # push it to other peers in mesh if not encountered
+            if trans_id not in self.trans_set:
+                for peer in self.mesh:
+                    if peer != src:
+                        msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                        self.out_msgs.append(msg)
+                self.trans_set.add(trans_id)
 
     
     def init_peers_scores(self):
@@ -131,7 +139,7 @@ class Node:
     def send_msgs(self):
         # reset out_msgs
         out_msg = self.out_msgs.copy()
-        self.out_msgs = []
+        self.out_msgs.clear()
         return out_msg
 
     def prune_peer(self, peer):
@@ -321,7 +329,7 @@ class Node:
 
     # return State, remember to return a copy
     def get_states(self):
-        return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), self.scores.copy(), self.msg_ids.copy())
+        return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), self.scores.copy(), self.round_trans_ids.copy(), self.gen_trans_num)
 
 
 # class Graph:
