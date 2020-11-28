@@ -167,7 +167,7 @@ def analyze_snapshot(snapshots):
     x_points = [ i for i in range(len(acc_recv_msg_hist))]
     axs[3].plot(x_points, acc_recv_msg_hist)
     # axs[3].plot(x_points, acc_gen_msg_hist)
-    axs[3].set(ylabel='# completed trans', xlabel='round')
+    axs[3].set(ylabel='# 90trans', xlabel='round')
 
     plt.show()
 

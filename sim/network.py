@@ -31,7 +31,38 @@ class LinkState:
         else:
             return False
 
-    # up_bd, down_bd are used in current round
+    # use separate functions(up, down), implicitly assume there is no inter network routing delay
+    # between up and down
+    def update_up(self, up_bd):
+        uploaded_byte = up_bd * SEC_PER_ROUND
+        if self.up_remain >= uploaded_byte:
+            self.up_remain -= uploaded_byte
+            self.down_remain += uploaded_byte
+        else:
+            self.down_remain += self.up_remain
+            uploaded_byte = self.up_remain
+            self.up_remain = 0
+        return uploaded_byte
+
+    def update_down(self, down_bd):
+        completed = []
+        downloaded_byte = down_bd * SEC_PER_ROUND
+        if self.down_remain < downloaded_byte:
+            downloaded_byte = self.down_remain 
+
+        self.down_remain -= downloaded_byte
+
+        self.byte_transferred += downloaded_byte
+        self.curr_msg_byte_transferred += downloaded_byte
+        # pop all completed msgs, self.curr_msg_byte_transferred may not be 0 at the end, i.e. some bandwidth is not used 
+        while len(self.msgs) > 0 and self.curr_msg_byte_transferred >= self.msgs[0].length:
+            self.curr_msg_byte_transferred -= self.msgs[0].length 
+            msg = self.msgs.pop(0)
+            completed.append(msg)
+
+        return completed
+
+    # NOT USED, SEPARATED INTO up and down, old comment up_bd, down_bd are used in current round
     def update(self, up_bd, down_bd):
         completed = []
         uploaded_byte = up_bd * SEC_PER_ROUND
@@ -66,21 +97,103 @@ class Controller:
             link = self.links[pair]
             link.feed_msg(msg)
 
+    # assign bandwidth for up down , with equal bandwidth per node
+    def assign_bandwidth_equal(self, link, pair):
+        src, dst = pair
+        num_up_msg = len(self.msg_uplink[src])
+        up_bd_per_node = float(link.up_limit) / num_up_msg
+        num_down_msg = len(self.msg_downlink[dst])
+        down_bd_per_node = float(link.down_limit) / num_up_msg
+        return up_bd_per_node, down_bd_per_node
+
+    # get bandwidth for this link depending on 
+    def assign_up_bandwidth_prop(self, my_link, my_pair, uplink_share):
+        my_src, my_dst = my_pair
+        local_uplink_share = {}
+        up_total = 0
+        #print(my_link.up_remain, my_link.down_remain)
+        for dst in self.msg_uplink[my_src]:
+            pair = (my_src, dst)
+            link = self.links[pair]
+            up_total += link.up_remain
+            local_uplink_share[(my_src, dst)] = link.up_remain
+
+        # in the case when upload is down, i.e. up_remain = 0, but down_remain > 0
+        for pair, up_bd in local_uplink_share.items():
+            up_ratio = 1.0/len(self.msg_uplink[my_src])
+            if up_total != 0:
+                up_ratio = up_bd/up_total
+            if pair not in uplink_share:
+                uplink_share[pair] = up_ratio
+            else:
+                assert(uplink_share[pair] == up_ratio)
+
+        
+        my_up_bd = uplink_share[my_pair] * my_link.up_limit 
+        return my_up_bd
+
+    def assign_down_bandwidth_prop(self, my_link, my_pair, downlink_share):
+        my_src, my_dst = my_pair
+        local_downlink_share = {}
+        down_total = 0
+        for src in self.msg_downlink[my_dst]:
+            pair = (src, my_dst)
+            link = self.links[pair]
+            down_total += link.down_remain
+            local_downlink_share[(src, my_dst)] = link.down_remain
+
+        for pair, down_bd in local_downlink_share.items():
+            down_ratio = down_bd/down_total
+            if pair not in downlink_share:
+                downlink_share[pair] = down_ratio
+            else:
+                assert(downlink_share[pair] == down_ratio)
+
+        my_down_bd = downlink_share[my_pair] * my_link.down_limit 
+        return my_down_bd
+
     # drain links in one round
     def drain_links(self):
         completed = {} # msg
-        for pair, link in self.links.items():
-            src, dst = pair
-            num_up_msg = len(self.msg_uplink[src])
-            up_bd_per_node = float(link.up_limit) / num_up_msg
-            num_down_msg = len(self.msg_downlink[dst])
-            down_bd_per_node = float(link.up_limit) / num_up_msg
-            # network deliver message
-            msgs = link.update(up_bd_per_node, down_bd_per_node)
-            if dst in completed:
-                completed[dst] += msgs
-            else:
-                completed[dst] = msgs
+        # network deliver message
+        if NETWORK_ASSIGN == "EQUAL":
+            for pair, link in self.links.items():
+                src, dst = pair
+                # Equal share
+                up_bd, down_bd = self.assign_bandwidth_equal(link, pair)
+                msgs = link.update(up_bd, down_bd)
+                if dst in completed:
+                    completed[dst] += msgs
+                else:
+                    completed[dst] = msgs
+
+        if NETWORK_ASSIGN == "PROP": 
+            uplink_share = {}
+            downlink_share = {}
+            # assign bd for every up link 
+            for pair, link in self.links.items():
+                up_bd = self.assign_up_bandwidth_prop(link, pair, uplink_share)
+
+
+            for pair, link in self.links.items():
+                up_bd = uplink_share[pair] * link.up_limit
+                link.update_up(up_bd)
+
+            for pair, link in self.links.items():
+                down_bd = self.assign_down_bandwidth_prop(link, pair, downlink_share)
+                assert(down_bd > 0)
+
+
+            for pair, link in self.links.items():
+                src, dst = pair
+                down_bd = downlink_share[pair] * link.down_limit
+                assert(down_bd > 0)
+                msgs = link.update_down(down_bd)
+                
+                if dst in completed:
+                    completed[dst] += msgs
+                else:
+                    completed[dst] = msgs
         return completed
 
     # after link finishes 

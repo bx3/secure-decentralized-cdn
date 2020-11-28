@@ -22,8 +22,8 @@ MAX_BANDWIDTH = 1000000000000
 
 
 # message len
-CTRL_MSG_LEN = 0
-TRANS_MSG_LEN = 2000 #  bytes
+CTRL_MSG_LEN = 20 # bytes
+TRANS_MSG_LEN = 5000 #  bytes
 
 # mesh para
 OVERLAY_D = 8
@@ -33,6 +33,10 @@ OVERLAY_DSCORE = 6
 OVERLAY_DLAZY = 12
 
 UPLINK_CONGEST_THRESH = OVERLAY_DHI*5  # num message in the up link capacity
+
+NETWORK_ASSIGN = "EQUAL"
+#NETWORK_ASSIGN = "PROP"
+
 
 
 TIMEOUT = 4 # round
