@@ -55,7 +55,8 @@ class LinkState:
         self.byte_transferred += downloaded_byte
         self.curr_msg_byte_transferred += downloaded_byte
         # pop all completed msgs, self.curr_msg_byte_transferred may not be 0 at the end, i.e. some bandwidth is not used 
-        while len(self.msgs) > 0 and self.curr_msg_byte_transferred >= self.msgs[0].length:
+        while (len(self.msgs) > 0 and 
+                round(self.curr_msg_byte_transferred, 5) >= self.msgs[0].length):
             self.curr_msg_byte_transferred -= self.msgs[0].length 
             msg = self.msgs.pop(0)
             completed.append(msg)
