@@ -103,9 +103,9 @@ class Node:
                 return
 
         if random.random() < self.gen_prob:
+            self.gen_trans_num += 1
             for peer in self.mesh:
                 trans_id = TransId(self.id, self.gen_trans_num)
-                self.gen_trans_num += 1
                 msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
                 self.out_msgs.append(msg)
 

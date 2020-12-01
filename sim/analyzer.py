@@ -110,6 +110,35 @@ def throughput_90(snapshots):
 
     return acc_recv_msg_hist, acc_gen_msg_hist
 
+def latency(acc_recv_msg_hist, acc_gen_msg_hist):
+    assert len(acc_recv_msg_hist) == len(acc_gen_msg_hist)
+    latency_hist = []
+    for r, acc_recv_msg in enumerate(acc_recv_msg_hist):
+        if (acc_recv_msg == 0):
+            latency_hist.append(0)
+        else:
+            if old_recv_msg == acc_recv_msg:
+                latency_hist.append(latency_hist[-1])
+            else:
+                for i in range(r+1):
+                    if acc_gen_msg_hist[i] >= acc_recv_msg:
+                        latency = r - i
+                        latency_hist.append(latency)
+                        break
+        old_recv_msg = acc_recv_msg
+    assert len(latency_hist) == len(acc_recv_msg_hist), "length of latency_hist: {}".format(len(latency_hist))
+    return latency_hist
+
+def avg_throughput(acc_recv_msg_hist, avg_step=10):
+    avg_throughput_hist = []
+    for i in range(avg_step-1):
+        avg_throughput_hist.append(0)
+    for r_end in range(avg_step-1, len(acc_recv_msg_hist)):
+        r_start = r_end - avg_step + 1
+        avg_throughput = (acc_recv_msg_hist[r_end]-acc_recv_msg_hist[r_start]) / avg_step
+        avg_throughput_hist.append(avg_throughput)
+    return avg_throughput_hist
+
 
 
 def dump_graph(snapshot):
@@ -145,8 +174,11 @@ def analyze_snapshot(snapshots):
     degrees_mean, degrees_max, degrees_min = get_degrees(snapshots)
     components, honest_components = get_components(snapshots)
     acc_recv_msg_hist, acc_gen_msg_hist = throughput_90(snapshots)
+    latency_hist = latency(acc_recv_msg_hist, acc_gen_msg_hist)
+    avg_throughput_hist = avg_throughput(acc_recv_msg_hist, 20)
+    avg_gen_hist = avg_throughput(acc_gen_msg_hist, 20)
 
-    fig, axs = plt.subplots(4)
+    fig, axs = plt.subplots(6)
     
     axs[0].plot(degrees_mean, 'b', degrees_max, 'r', degrees_min, 'g')
     axs[0].set(ylabel='node degree')
@@ -166,8 +198,15 @@ def analyze_snapshot(snapshots):
 
     x_points = [ i for i in range(len(acc_recv_msg_hist))]
     axs[3].plot(x_points, acc_recv_msg_hist)
-    # axs[3].plot(x_points, acc_gen_msg_hist)
+    axs[3].plot(x_points, acc_gen_msg_hist)
     axs[3].set(ylabel='# 90trans', xlabel='round')
+
+    axs[4].plot(x_points, avg_throughput_hist)
+    axs[4].plot(x_points, avg_gen_hist)
+    axs[4].set(ylabel='avg T', xlabel='round')
+
+    axs[5].plot(x_points, latency_hist)
+    axs[5].set(ylabel='latency', xlabel='round')
 
     plt.show()
 
