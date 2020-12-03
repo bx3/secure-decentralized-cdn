@@ -3,7 +3,7 @@ import sys
 import os
 from experiment import Experiment
 from config import *
-from analyzer import analyze_snapshot
+from analyzer import *
 import generate_network as gn
 import random
 random.seed(0)
@@ -50,6 +50,9 @@ elif cmd == "run":
     snapshots = gossipsub.start(epoch)
     print("start analyze")
     analyze_snapshot(snapshots)
+    #  dump_graph(snapshots[50])
+    dump_node(snapshots, 0)
+    dump_node(snapshots, 99)
 
 
 

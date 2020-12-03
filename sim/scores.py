@@ -26,7 +26,7 @@ class PeerScoreCounter:
         # state
         self.in_mesh = False
         self.mesh_r = 0 # in round
-        self.graft_r = 0 # in round
+        #  self.graft_r = 0 # in round
 
         # background
         self.decay_r = 0
@@ -36,36 +36,48 @@ class PeerScoreCounter:
 
     def run_background(self, curr_r):
         self.update_p1(curr_r)
+        self.get_score()
 
+        # Measure Mesh Message Delivery Rate (P3a)
+        if self.mesh_r > 9:
+            count_r = self.mesh_r - 10
+            if count_r % MESH_MESSAGE_DELIVERY_WINDOW == 0:
+                self.reset_msg_delivery()
+            elif count_r % (MESH_MESSAGE_DELIVERY_WINDOW-1) == 0:
+                self.update_p3a()
+
+        # Decay
         if curr_r - self.decay_r >= DECAY_INTERVAL:
+            #  print('Decay, current round: {}, decay_r: {}'.format(curr_r, self.decay_r))
             self.decay_r = curr_r
             self.decay()
 
     def update_p1(self, r):
         if self.in_mesh:
-            self.mesh_r = r - self.graft_r
+            #  self.mesh_r = r - self.graft_r
+            self.mesh_r += 1
         self.P1 = self.mesh_r
 
     def update_p2(self):
         # num first msg from, when first get the message
         self.P2 += 1
 
-    def msg_delivery(self):
-        # count the # of msgs delivered in the window
+    def reset_msg_delivery(self):
+        self.msg_delivery = 0
+    def add_msg_delivery(self):
         self.msg_delivery += 1
-
     def update_p3a(self):
         # mesh message deliveries, when window ends
-        # update p3a, and reset # of msg delivery 
+        # update p3a
         if self.msg_delivery >= MESH_MESSAGE_DELIVERIES_THRESHOLD:
             self.P3a = 0
         else:
             self.P3a = (MESH_MESSAGE_DELIVERIES_THRESHOLD-self.msg_delivery)**2
-        self.msg_delivery = 0
 
     def update_p3b(self, rate_deficit):
         # Whenever a peer is pruned with a negative score, the parameter is augmented by the rate deficit at the time of prune.
         self.P3b += rate_deficit
+    
     def update_p4(self):
         # invalid messages, when get the invalid message
         self.P4 += 1
@@ -73,6 +85,7 @@ class PeerScoreCounter:
     def update_p5(self):
         # TODO
         pass
+
     def update_p6(self):
         # TODO
         pass

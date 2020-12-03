@@ -69,12 +69,18 @@ class Experiment:
         # chosen attack strategy to generate new messgae and arrange network 
         adv_msgs = []
         # for u, node in self.nodes.items():
-        #     if node.role == NodeType.SYBIL:
+        #     if node.role == NodeType.SYBIL and r+1==40:
+        #         peer = 0
+        #         msg = node.gen_msg(MessageType.GRAFT, peer, CTRL_MSG_LEN, None)
+        #         node.mesh[peer] = Direction.Outgoing
+        #         if peer not in node.scores:
+        #             node.scores[peer] = PeerScoreCounter()
+        #         node.scores[peer].init_r(r)
+        #         adv_msgs.append(msg)
         #         for peer in node.mesh:
         #             trans_id = TransId(node.id, node.gen_trans_num)
         #             node.gen_trans_num += 1
         #             msg = node.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
-        #             adv_msgs.append(msg)
 
         self.network.push_msgs(adv_msgs, r)
         # maybe rearrange message order

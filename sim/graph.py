@@ -50,6 +50,8 @@ class Node:
     def run_scores_background(self, curr_r):
         for u, counters in self.scores.items():
             counters.run_background(curr_r)
+            #  if (self.id == 0 and u == 99):
+                #  print('0 update score for', u, 'new score:', counters.get_score())
 
     # worker func 
     def process_msgs(self, r):
@@ -61,7 +63,7 @@ class Node:
         # handle msgs 
         while len(self.in_msgs) > 0:
             msg = self.in_msgs.pop(0)
-            mtype, _, _, dst, _, _, _ = msg
+            mtype, _, src, dst, _, _, _ = msg
             assert self.id == dst
             if mtype == MessageType.GRAFT:
                 self.proc_GRAFT(msg, r)
@@ -78,7 +80,10 @@ class Node:
             elif mtype == MessageType.HEARTBEAT:
                 self.proc_Heartbeat(msg, r)
             elif mtype == MessageType.TRANS:
-                self.proc_TRANS(msg)
+                self.proc_TRANS(msg, r)
+            else:
+                # Invalid msgs
+                self.scores[src].update_p4()
         
         if self.role == NodeType.PUB:
             self.gen_trans()
@@ -109,12 +114,15 @@ class Node:
                 msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
                 self.out_msgs.append(msg)
 
-    def proc_TRANS(self, msg):
+    def proc_TRANS(self, msg, r):
         _, mid, src, _, _, _, trans_id = msg
+        self.scores[src].add_msg_delivery()
         # if not seen msg before
         if mid not in self.msg_ids:
             self.msg_ids.add(mid)
             self.scores[src].update_p2()
+            #  if (self.id == 0):
+                #  print('Round {}: 0 get msg first from {}, new score is {}'.format(r, src, self.scores[src].get_score()))
             self.round_trans_ids.add(trans_id)
             # push it to other peers in mesh if not encountered
             if trans_id not in self.trans_set:
@@ -146,13 +154,17 @@ class Node:
         # add backoff counter
         msg = self.gen_msg(MessageType.PRUNE, peer, CTRL_MSG_LEN, None)
         self.mesh.pop(peer, None)
+        self.scores[peer].in_mesh = False
         self.out_msgs.append(msg)
 
     def graft_peer(self, peer, r):
         msg = self.gen_msg(MessageType.GRAFT, peer, CTRL_MSG_LEN, None)
         self.mesh[peer] = Direction.Outgoing
+        self.scores[peer].in_mesh = True
         if peer not in self.scores:
             self.scores[peer] = PeerScoreCounter()
+        #  if (self.id == 0):
+            #  print('Round {}: 0 graft {}, new score is {}'.format(r, peer, self.scores[peer].get_score()))
         self.scores[peer].init_r(r)
         self.out_msgs.append(msg)
 
@@ -165,7 +177,9 @@ class Node:
         for u in list(all_mesh_peers):
             counters = self.scores[u]
             if counters.get_score() < 0:
-                self.scores[u].update_p3b(-counters.get_score())
+                counters.update_p3b(-counters.get_score())
+                #  if (self.id == 0):
+                    #  print('Round {}: 0 prune {}, new score is {}'.format(r, u, counters.get_score()))
                 self.prune_peer(u)
 
         # add peers if needed
@@ -264,13 +278,18 @@ class Node:
         _, _, src, _, _, _, _ = msg
         if src in self.mesh:
             self.mesh.pop(src, None)
+            self.scores[src].in_mesh = False
          
 
     # the other peer has added me to its mesh, I will add it too 
     def proc_GRAFT(self, msg, r):
         _, _, src, _, _, _, _ = msg
         self.mesh[src] = Direction.Incoming
-        self.scores[src] = PeerScoreCounter()
+        if src not in self.scores:
+            self.scores[src] = PeerScoreCounter()
+        #  if (self.id == 0):
+            #  print('Round {}: 0 graft {}, new score is {}'.format(r, src, self.scores[src].get_score()))
+        self.scores[src].in_mesh = True
         self.peers.add(src)
 
     def proc_LEAVE(self, msg):
@@ -329,7 +348,11 @@ class Node:
 
     # return State, remember to return a copy
     def get_states(self):
-        return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), self.scores.copy(), self.round_trans_ids.copy(), self.gen_trans_num)
+        scores_value = {} # key is peer
+        for peer in self.scores:
+            scores_value[peer] = self.scores[peer].get_score()
+
+        return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), scores_value, self.round_trans_ids.copy(), self.gen_trans_num)
 
 
 # class Graph:

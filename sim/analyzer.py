@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import xlsxwriter 
 from config import *
 
 def get_degrees(snapshots):
@@ -139,7 +140,33 @@ def avg_throughput(acc_recv_msg_hist, avg_step=10):
         avg_throughput_hist.append(avg_throughput)
     return avg_throughput_hist
 
+def dump_node(snapshots, node_id):
+    workbook = xlsxwriter.Workbook('node{}.xlsx'.format(node_id)) 
+    worksheet = workbook.add_worksheet()
+    bold = workbook.add_format({'bold': True})
+    red = workbook.add_format({'font_color': 'red'})
 
+    worksheet.write(0, 0, 'Round', bold)
+    peers = {}
+    for snapshot in snapshots:
+        node = snapshot.nodes[node_id]
+        r = snapshot.round
+        worksheet.write(r+1, 0, str(r))
+        for s in node.scores:
+            if s not in peers:
+                peers[s] = len(peers) + 1
+                peer = snapshot.nodes[s] 
+                if peer.role == NodeType.PUB: 
+                    worksheet.write(0, peers[s], str(s)+' (PUB)', bold)
+                if peer.role == NodeType.LURK: 
+                    worksheet.write(0, peers[s], str(s)+' (LURK)', bold)
+                if peer.role == NodeType.SYBIL: 
+                    worksheet.write(0, peers[s], str(s)+' (SYBIL)', bold)
+            if s in node.mesh:
+                worksheet.write(r+1, peers[s], node.scores[s], red)
+            else:
+                worksheet.write(r+1, peers[s], node.scores[s])
+    workbook.close()
 
 def dump_graph(snapshot):
     # dump the graph state of a snapshot to a file
@@ -166,7 +193,7 @@ def dump_graph(snapshot):
         f.write('\n')
         f.write('socres: ')
         for s in node.scores:
-            f.write('{}({}),'.format(s, node.scores[s].get_score()))
+            f.write('{}({}),'.format(s, node.scores[s]))
         f.write('\n')
     f.close()
 
