@@ -2,6 +2,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import xlsxwriter 
+from collections import defaultdict
 from config import *
 
 def get_degrees(snapshots):
@@ -88,26 +89,46 @@ def throughput_90(snapshots):
     acc_recv_msg_hist = [] # acc for accumulative
     acc_gen_msg_hist =[] 
 
-    for r, snapshot in enumerate(snapshots):
-        nodes = snapshot.nodes
-        num_nodes = len(nodes)
+    for r in range(len(snapshots)):
+        nodes = snapshots[r].nodes
+        net = snapshots[r].network
+        trans_nodes = defaultdict(set)
         acc_gen_msg = 0
+
         for u, state in nodes.items():
-            handle_single_state(trans_recv, reached90_transid, state, u)
+            for tid in state.trans_set: 
+                trans_nodes[tid].add(u)
             acc_gen_msg += state.gen_trans_num
 
-        # count 
-        remove_tid = [] 
-        for trans_id, recv_grp in trans_recv.items():
-            # print(trans_id, len(recv_grp))
-            if len(recv_grp) > num_nodes * 0.9:
-                reached90_transid.add(trans_id)
-                remove_tid.append(trans_id)
-        # make sure no double count
-        for tid in remove_tid:
-            trans_recv.pop(tid, None)
-        acc_recv_msg_hist.append(len(reached90_transid))
+        num_90_msg = 0
+        for tid, n in trans_nodes.items():
+            if len(n) > 0.9 * len(nodes):
+                num_90_msg += 1
+
+        acc_recv_msg_hist.append(num_90_msg)
         acc_gen_msg_hist.append(acc_gen_msg)
+
+
+    # for r, snapshot in enumerate(snapshots):
+        # nodes = snapshot.nodes
+        # num_nodes = len(nodes)
+        # acc_gen_msg = 0
+        # for u, state in nodes.items():
+            # handle_single_state(trans_recv, reached90_transid, state, u)
+            # acc_gen_msg += state.gen_trans_num
+
+        # # count 
+        # remove_tid = [] 
+        # for trans_id, recv_grp in trans_recv.items():
+            # # print(trans_id, len(recv_grp))
+            # if len(recv_grp) > num_nodes * 0.9:
+                # reached90_transid.add(trans_id)
+                # remove_tid.append(trans_id)
+        # # make sure no double count
+        # for tid in remove_tid:
+            # trans_recv.pop(tid, None)
+        # acc_recv_msg_hist.append(len(reached90_transid))
+        # acc_gen_msg_hist.append(acc_gen_msg)
 
     return acc_recv_msg_hist, acc_gen_msg_hist
 
@@ -197,10 +218,31 @@ def dump_graph(snapshot):
         f.write('\n')
     f.close()
 
+def analyze_network(snapshots):
+    # for i, snapshot in enumerate(snapshots):
+        # nodes = snapshot.nodes
+        # # print('snapshot', i)
+        # for u, state in nodes.items():
+            # print('round', i, 'node', u, 'num msg', len(state.trans_set))
+    for r in range(len(snapshots)):
+        nodes = snapshots[r].nodes
+        net = snapshots[r].network
+        trans_nodes = defaultdict(set)
+        
+        for u, node in nodes.items():
+            for tid in node.trans_set: 
+                trans_nodes[tid].add(u)
+        num_90_msg = 0
+        for tid, nodes in trans_nodes.items():
+            if len(nodes) > 0.9 * len(nodes):
+                num_90_msg += 1
+
+
 def analyze_snapshot(snapshots):
     degrees_mean, degrees_max, degrees_min = get_degrees(snapshots)
     components, honest_components = get_components(snapshots)
     acc_recv_msg_hist, acc_gen_msg_hist = throughput_90(snapshots)
+    print(len(acc_recv_msg_hist))
     latency_hist = latency(acc_recv_msg_hist, acc_gen_msg_hist)
     avg_throughput_hist = avg_throughput(acc_recv_msg_hist, 20)
     avg_gen_hist = avg_throughput(acc_gen_msg_hist, 20)

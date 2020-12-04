@@ -21,6 +21,16 @@ class LinkState:
         self.byte_transferred = msg.length # link statistics
         self.curr_msg_byte_transferred = 0 # count if curr msg finishes
 
+    def get_num_msg(self):
+        return len(self.msgs)
+
+    def get_num_trans(self):
+        n = 0
+        for msg in self.msgs:
+            if msg.mType == MessageType.TRANS:
+                n += 1
+        return n
+
     def feed_msg(self, msg):
         self.up_remain += msg.length
         self.msgs.append(msg)
@@ -47,7 +57,7 @@ class LinkState:
     def update_down(self, down_bd):
         completed = []
         downloaded_byte = down_bd * SEC_PER_ROUND
-        if self.down_remain < downloaded_byte:
+        if self.down_remain <= downloaded_byte:
             downloaded_byte = self.down_remain 
 
         self.down_remain -= downloaded_byte
@@ -322,6 +332,7 @@ class Network:
             self.controller.msg_uplink.copy(),
             self.controller.msg_downlink.copy()
             )
+        return state
 
     # def enqueue_msg(self, msg, r, dst):
         # tagged_msg = (r, msg)

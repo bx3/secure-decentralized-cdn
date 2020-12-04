@@ -49,10 +49,13 @@ elif cmd == "run":
     gossipsub = Experiment(setup, heartbeat)
     snapshots = gossipsub.start(epoch)
     print("start analyze")
+    # analyze_network(snapshots)
     analyze_snapshot(snapshots)
-    #  dump_graph(snapshots[50])
+    # dump_graph(snapshots[50])
     dump_node(snapshots, 0)
-    dump_node(snapshots, 99)
+    # dump_node(snapshots, 99)
+else:
+    print('Require a valid subcommand', cmd)
 
 
 

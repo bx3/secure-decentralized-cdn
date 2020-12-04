@@ -23,7 +23,7 @@ MAX_BANDWIDTH = 1000000000000
 
 # message len
 CTRL_MSG_LEN = 20 # bytes
-TRANS_MSG_LEN = 5000 #  bytes
+TRANS_MSG_LEN = 2000 #  bytes
 
 # mesh para
 OVERLAY_D = 8

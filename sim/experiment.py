@@ -13,7 +13,7 @@ class Snapshot:
     def __init__(self):
         self.round = 0
         self.nodes = {} # key:node id value: node state
-        self.network = {} # message queue in for each node
+        self.network = None # message queue in for each node
 
 class Experiment:
     def __init__(self, setup_json, heartbeat):
@@ -24,6 +24,9 @@ class Experiment:
 
         self.load_nodes(setup_json)
         self.adversary = attacks.Adversary()
+
+        # eclipse attack
+        self.target = -1
 
     # # # # # # # # 
     #  main loop  #
@@ -67,6 +70,10 @@ class Experiment:
         # examine network in curr round r
         # self.adversary
         # chosen attack strategy to generate new messgae and arrange network 
+        if (not self.adversary.has_target()) and len(self.snapshots) > 0:
+            self.adversary.find_eclipse_publisher_target(r, self.snapshots)
+
+
         adv_msgs = []
         # for u, node in self.nodes.items():
         #     if node.role == NodeType.SYBIL and r+1==40:
@@ -86,6 +93,7 @@ class Experiment:
         # maybe rearrange message order
         pass
 
+                 
     def deliver_msgs(self, curr_r):
         num_delivered_msg =  0
         dst_msgs = self.network.update()
@@ -109,6 +117,7 @@ class Experiment:
         # get all node states
         for u, node in self.nodes.items():
             snapshot.nodes[u] = node.get_states()
+
         # get network 
         snapshot.network = self.network.take_snapshot()
         

@@ -6,7 +6,18 @@ from messages import *
 from scores import PeerScoreCounter
 import sys
 
-State = namedtuple('State', ['role', 'conn', 'mesh', 'peers', 'out_msgs', 'scores', 'transids', 'gen_trans_num'])
+State = namedtuple('State', [
+    'role', 
+    'conn', 
+    'mesh', 
+    'peers', 
+    'out_msgs', 
+    'scores', 
+    'trans_set', 
+    'transids', 
+    'gen_trans_num', 
+    'out_conn']
+    )
 TransId = namedtuple('TransId', ['src', 'no'])
 
 class Peer:
@@ -41,6 +52,8 @@ class Node:
         self.round_trans_ids = set() # keep track of msgs used for analysis
         self.trans_set = set()
 
+        self.last_heartbeat = -1
+
         # useful later 
         self.topics = set()
 
@@ -62,6 +75,7 @@ class Node:
         self.round_trans_ids.clear()
         # handle msgs 
         while len(self.in_msgs) > 0:
+            # print(self.id, 'num mesh', len(self.mesh))
             msg = self.in_msgs.pop(0)
             mtype, _, src, dst, _, _, _ = msg
             assert self.id == dst
@@ -78,7 +92,9 @@ class Node:
             elif mtype == MessageType.PX:
                 self.proc_PX(msg)
             elif mtype == MessageType.HEARTBEAT:
-                self.proc_Heartbeat(msg, r)
+                if r > self.last_heartbeat:
+                    self.last_heartbeat = r
+                    self.proc_Heartbeat(msg, r)
             elif mtype == MessageType.TRANS:
                 self.proc_TRANS(msg, r)
             else:
@@ -92,12 +108,14 @@ class Node:
         if self.role == NodeType.PUB or self.role == NodeType.LURK:
             # someone is connected with me in mesh
             if (r%self.heartbeat_period) == HEARTBEAT_START:
-                self.gen_heartbeat()
+                self.gen_heartbeat(r)
 
-    def gen_heartbeat(self):
+    def gen_heartbeat(self, r):
         for peer in self.peers:
             msg = self.gen_msg(MessageType.HEARTBEAT, peer, CTRL_MSG_LEN, None)
             self.out_msgs.append(msg)
+        self.proc_Heartbeat(None, r)
+        self.last_heartbeat = r
 
     # only gen transaction when previous one is at least pushed 
     def gen_trans(self):
@@ -352,7 +370,23 @@ class Node:
         for peer in self.scores:
             scores_value[peer] = self.scores[peer].get_score()
 
-        return State(self.role, self.conn.copy(), self.mesh.copy(), self.peers.copy(), self.out_msgs.copy(), scores_value, self.round_trans_ids.copy(), self.gen_trans_num)
+        out_conn = []
+        for peer, direction in self.mesh.items():
+            if direction == Direction.Outgoing:
+                out_conn.append(peer)
+
+        return State(
+                self.role, 
+                self.conn.copy(), 
+                self.mesh.copy(), 
+                self.peers.copy(), 
+                self.out_msgs.copy(), 
+                scores_value, 
+                self.trans_set.copy(), 
+                self.round_trans_ids.copy(), 
+                self.gen_trans_num,
+                out_conn
+                )
 
 
 # class Graph:
