@@ -116,8 +116,9 @@ class PeerScoreCounter:
         score5 = self.W5 * self.P5
         score6 = self.W6 * self.P6
 
-        self.score = score1 + score2 + score3a + score3b + score4 + score5 + score6 
-        return self.score
+        # self.score = score1 + score2 + score3a + score3b + score4 + score5 + score6 
+        self.score = score1+ score2 + score3a + score4 + score5 + score6 
+        return 0 #self.score
 
     def get_fake_score(self):
         self.fake_score += random.uniform(-1,1)

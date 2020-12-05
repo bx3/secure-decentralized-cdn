@@ -66,6 +66,59 @@ class Node:
             #  if (self.id == 0 and u == 99):
                 #  print('0 update score for', u, 'new score:', counters.get_score())
 
+    def adv_process_msgs(self, r, target, favor_list):
+        # self.schedule_heartbeat(r)
+        self.run_scores_background(r)
+        self.round_trans_ids.clear()
+
+        while len(self.in_msgs) > 0:
+            msg = self.in_msgs.pop(0)
+            mtype, _, src, dst, _, _, _ = msg
+            if mtype == MessageType.HEARTBEAT:
+                continue
+
+            assert self.id == dst
+            if mtype == MessageType.GRAFT:
+                self.proc_GRAFT(msg, r)
+            elif mtype == MessageType.PRUNE:
+                self.proc_PRUNE(msg)
+            elif mtype == MessageType.LEAVE:
+                self.proc_LEAVE(msg) 
+            elif mtype == MessageType.IHAVE:
+                self.proc_IHAVE(msg) 
+            elif mtype == MessageType.IWANT:
+                self.proc_IWANT(msg) 
+            elif mtype == MessageType.PX:
+                self.proc_PX(msg)
+            elif mtype == MessageType.HEARTBEAT:
+                self.proc_Heartbeat(msg, r)
+            elif mtype == MessageType.TRANS:
+                self.adv_proc_TRANS(msg, r, target, favor_list)
+            else:
+                # Invalid msgs
+                self.scores[src].update_p4()
+        
+    def adv_proc_TRANS(self, msg, r, target, favor_list):
+        _, mid, src, _, _, _, trans_id = msg
+        self.scores[src].add_msg_delivery()
+        # if not seen msg before
+        if mid not in self.msg_ids:
+            self.msg_ids.add(mid)
+            self.scores[src].update_p2()
+            self.round_trans_ids.add(trans_id)
+            # push it to other peers in mesh if not encountered
+            if trans_id not in self.trans_set:
+                # print(self.id, self.mesh)
+                for peer in self.mesh:
+                    if peer in favor_list:
+                        msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                        self.out_msgs.append(msg)
+                    elif peer != src and peer < 50:
+                        # print("send long msg to peer", peer)
+                        msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN*100, trans_id)
+                        self.out_msgs.append(msg)
+                self.trans_set.add(trans_id)
+
     # worker func 
     def process_msgs(self, r):
         # schedule heartbeat 
@@ -75,7 +128,6 @@ class Node:
         self.round_trans_ids.clear()
         # handle msgs 
         while len(self.in_msgs) > 0:
-            # print(self.id, 'num mesh', len(self.mesh))
             msg = self.in_msgs.pop(0)
             mtype, _, src, dst, _, _, _ = msg
             assert self.id == dst
@@ -309,6 +361,9 @@ class Node:
             #  print('Round {}: 0 graft {}, new score is {}'.format(r, src, self.scores[src].get_score()))
         self.scores[src].in_mesh = True
         self.peers.add(src)
+        # if self.id > 50 or self.id == 1:
+        #     print(self.id, 'graft', src)
+        self.out_msgs.append(msg)
 
     def proc_LEAVE(self, msg):
         pass

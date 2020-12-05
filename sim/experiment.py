@@ -3,6 +3,7 @@ from network import Network
 from messages import *
 from config import *
 from graph import State
+from sybil import Sybil
 import generate_network as gn
 import attacks
 import json
@@ -13,17 +14,22 @@ class Snapshot:
     def __init__(self):
         self.round = 0
         self.nodes = {} # key:node id value: node state
+        self.sybils = {}
         self.network = None # message queue in for each node
 
 class Experiment:
     def __init__(self, setup_json, heartbeat):
         self.snapshots = []
-        self.nodes = {}
+        self.nodes = {}  # honest nodes
+        self.sybils = {}
+
         self.network = Network(setup_json)
         self.heartbeat_period = heartbeat
+    
+        # load both nodes and sybils nodes
+        self.load_nodes(setup_json) 
 
-        self.load_nodes(setup_json)
-        self.adversary = attacks.Adversary()
+        self.adversary = attacks.Adversary(self.sybils)
 
         # eclipse attack
         self.target = -1
@@ -33,49 +39,107 @@ class Experiment:
     # # # # # # # # 
     def start(self, epoch):
         for r in range(epoch):
-            # start = time.time()
-            # periodically gen hearbeat MOVED TO NODE
-            # self.schedule_heartbeat(r)    
-
             # network store messages from honest nodes
             self.push_honest_msgs(r)
             # start attack
-            self.act_adversarirs(r)
+            self.attack(r)
             # network deliver msgs
             self.deliver_msgs(r)
-
-            # all node retrieve msgs 
-            self.all_nodes_handle_msgs(r)    
-
+            # honest node retrieve msgs 
+            self.honest_nodes_handle_msgs(r)
+            # sybil node retrieve msgs
+            self.sybil_nodes_handle_msgs(r)
             # take snapshot
             self.take_snapshot(r)
             #print("round", r, "finish using ", time.time()-start)
         return self.snapshots
 
-    # heartbeat
-    # def schedule_heartbeat(self, r):
-        # if r%self.heartbeat_period==0:
-            # self.network.deliver_heartbeats(r)
-    
     # honest nodes push msg to network
     def push_honest_msgs(self, curr_r):
-        # TODO honest nodes
         for u, node in self.nodes.items():
             # if network has too many messages, stop
             if not self.network.is_uplink_congested(u):
                 msgs = node.send_msgs() 
                 self.network.push_msgs(msgs, curr_r)
 
-    def act_adversarirs(self, r):
-        # examine network in curr round r
-        # self.adversary
+    def attack(self, r):
         # chosen attack strategy to generate new messgae and arrange network 
-        if (not self.adversary.has_target()) and len(self.snapshots) > 0:
-            self.adversary.find_eclipse_publisher_target(r, self.snapshots)
+        # if (not self.adversary.has_target()) and len(self.snapshots) > 0:
+            # self.adversary.find_eclipse_publisher_target(r, self.snapshots)
+        self.adversary.target = 1 # some hack
+        adv_msgs = self.adversary.eclipse_target(r, self.snapshots) # only possess snapshots
+        self.network.push_msgs(adv_msgs, r)
+                 
+    def deliver_msgs(self, curr_r):
+        num_delivered_msg =  0
+        dst_msgs = self.network.update()
+        for dst, msgs in dst_msgs.items():
+            # honest 
+            if dst in self.nodes:
+                self.nodes[dst].insert_msg_buff(msgs)
+            else:
+                self.sybils[dst].insert_msg_buff(msgs)
+            num_delivered_msg += len(msgs)
+
+    def all_nodes_handle_msgs(self, curr_r):
+        # node process messages
+        for u, node in self.nodes.items():
+            if node.role != NodeType.SYBIL:
+                node.process_msgs(curr_r)
+            else:
+                node.adv_process_msgs(curr_r)
+    
+    def honest_nodes_handle_msgs(self, curr_r):
+        for u, node in self.nodes.items():
+            if node.role != NodeType.SYBIL:
+                node.process_msgs(curr_r)
+
+    def sybil_nodes_handle_msgs(self, curr_r):
+        self.adversary.handle_msgs(curr_r)
 
 
-        adv_msgs = []
-        # for u, node in self.nodes.items():
+    def take_snapshot(self, r):
+        snapshot = Snapshot()
+        snapshot.round = r
+        # get all node states
+        for u, node in self.nodes.items():
+            snapshot.nodes[u] = node.get_states()
+
+        for u, sybil in self.sybils.items():
+            snapshot.sybils[u] = sybil.get_states()
+
+        # get network 
+        snapshot.network = self.network.take_snapshot()
+        
+        self.snapshots.append(snapshot)
+
+    def load_nodes(self, setup_file):
+        nodes = gn.parse_nodes(setup_file)
+        for u in nodes:
+            u_id = u["id"]
+            if u_id not in self.nodes:
+                if u["role"] != 2: # 2 is sybil
+                    self.nodes[u_id] = Node(
+                        NodeType(u["role"]), 
+                        u_id,
+                        u["prob"],
+                        u["known"],
+                        self.heartbeat_period
+                    )
+                else:
+                    self.sybils[u_id] = Sybil(
+                        NodeType(u["role"]), 
+                        u_id,
+                        u["prob"],
+                        u["known"],
+                        self.heartbeat_period
+                    )
+            else: 
+                print('Error. config file duplicate id')
+                sys.exit(0)
+
+
+# for u, node in self.nodes.items():
         #     if node.role == NodeType.SYBIL and r+1==40:
         #         peer = 0
         #         msg = node.gen_msg(MessageType.GRAFT, peer, CTRL_MSG_LEN, None)
@@ -88,54 +152,3 @@ class Experiment:
         #             trans_id = TransId(node.id, node.gen_trans_num)
         #             node.gen_trans_num += 1
         #             msg = node.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
-
-        self.network.push_msgs(adv_msgs, r)
-        # maybe rearrange message order
-        pass
-
-                 
-    def deliver_msgs(self, curr_r):
-        num_delivered_msg =  0
-        dst_msgs = self.network.update()
-        for dst, msgs in dst_msgs.items():
-            self.nodes[dst].insert_msg_buff(msgs)
-            num_delivered_msg += len(msgs)
-        # print("num deliverd msg", num_delivered_msg)
-        # for u, node in self.nodes.items():
-            # msgs = self.network.get_msgs(u, curr_r)
-            # node.insert_msg_buff(msgs)
-
-
-    def all_nodes_handle_msgs(self, curr_r):
-        # node process messages
-        for u, node in self.nodes.items():
-            node.process_msgs(curr_r)
-
-    def take_snapshot(self, r):
-        snapshot = Snapshot()
-        snapshot.round = r
-        # get all node states
-        for u, node in self.nodes.items():
-            snapshot.nodes[u] = node.get_states()
-
-        # get network 
-        snapshot.network = self.network.take_snapshot()
-        
-        self.snapshots.append(snapshot)
-
-    def load_nodes(self, setup_file):
-        nodes = gn.parse_nodes(setup_file)
-        for u in nodes:
-            u_id = u["id"]
-            if u_id not in self.nodes:
-                self.nodes[u_id] = Node(
-                    NodeType(u["role"]), 
-                    u_id,
-                    u["prob"],
-                    u["known"],
-                    self.heartbeat_period
-                )
-            else: 
-                print('Error. config file duplicate id')
-                sys.exit(0)
-

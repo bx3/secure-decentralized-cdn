@@ -275,7 +275,7 @@ class Network:
 
         num_msg = len(self.controller.msg_uplink[u])
         if num_msg > UPLINK_CONGEST_THRESH:
-            print('Warning. node', u, 'Hit UPLINK_CONGEST_THRESH with num msg', num_msg)
+            # print('Warning. node', u, 'Hit UPLINK_CONGEST_THRESH with num msg', num_msg)
             return True
         return False
    
