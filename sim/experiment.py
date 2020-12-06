@@ -28,6 +28,7 @@ class Experiment:
     
         # load both nodes and sybils nodes
         self.load_nodes(setup_json) 
+        self.setup_mesh()
 
         self.adversary = attacks.Adversary(self.sybils)
 
@@ -122,7 +123,7 @@ class Experiment:
                     self.nodes[u_id] = Node(
                         NodeType(u["role"]), 
                         u_id,
-                        u["prob"],
+                        u["interval"],
                         u["known"],
                         self.heartbeat_period
                     )
@@ -130,13 +131,25 @@ class Experiment:
                     self.sybils[u_id] = Sybil(
                         NodeType(u["role"]), 
                         u_id,
-                        u["prob"],
+                        u["interval"],
                         u["known"],
                         self.heartbeat_period
                     )
             else: 
                 print('Error. config file duplicate id')
                 sys.exit(0)
+
+    def setup_mesh(self):
+        mesh = {} # key is node, value is mesh nodes
+        for u, node in self.nodes.items():
+            num_out = int(OVERLAY_D / 2)
+            known_peers = node.peers.copy()
+            known_peers = list(known_peers)
+            random.shuffle(known_peers)
+            chosen = known_peers[:num_out]
+            for v in chosen:
+                node.setup_peer(v, Direction.Outgoing, 0)
+                self.nodes[v].setup_peer(u, Direction.Incoming, 0) 
 
 
 # for u, node in self.nodes.items():

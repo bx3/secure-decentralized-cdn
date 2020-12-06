@@ -5,6 +5,7 @@ import xlsxwriter
 from collections import defaultdict
 from config import *
 from messages import Direction
+from messages import MessageType
 
 def get_degrees(snapshots):
     # get the mean/max/min degrees of all nodes in all snapshots
@@ -134,6 +135,8 @@ def throughput_90(snapshots):
             acc_gen_msg += state.gen_trans_num
 
         num_90_msg = 0
+
+
         for tid, n in trans_nodes.items():
             if len(n) > 0.9 * num_honest_node:
                 num_90_msg += 1
@@ -240,24 +243,126 @@ def dump_graph(snapshot):
         f.write('\n')
     f.close()
 
+def profile_node(snapshots, u):
+    mesh_hist = []
+    for snapshot in snapshots:
+        node = snapshot.nodes[u]
+        mesh_hist.append(len(node.mesh))
+    return mesh_hist
+
 def analyze_network(snapshots):
-    # for i, snapshot in enumerate(snapshots):
-        # nodes = snapshot.nodes
-        # # print('snapshot', i)
-        # for u, state in nodes.items():
-            # print('round', i, 'node', u, 'num msg', len(state.trans_set))
+    num_links_hist = []
+    num_links_with_trans_hist = []
+    total_num_trans_hist = []
+    finished_trans_hist = []
+    num_trans_hist = []
     for r in range(len(snapshots)):
         nodes = snapshots[r].nodes
-        net = snapshots[r].network
+        sybils = snapshots[r].nodes
+        network = snapshots[r].network
         trans_nodes = defaultdict(set)
-        
-        for u, node in nodes.items():
-            for tid in node.trans_set: 
-                trans_nodes[tid].add(u)
-        num_90_msg = 0
-        for tid, nodes in trans_nodes.items():
-            if len(nodes) > 0.9 * len(nodes):
-                num_90_msg += 1
+
+        num_links_hist.append(len(network.links))
+        num_links_with_trans = 0
+        num_trans = 0
+        finished_trans = 0
+
+        for pair, linkshot in network.links.items():
+            if linkshot.num_trans > 0:
+                num_links_with_trans += 1
+
+            num_trans += linkshot.num_trans
+            finished_trans += linkshot.finished_trans
+        num_links_with_trans_hist.append(num_links_with_trans)
+        num_trans_hist.append(num_trans)
+        finished_trans_hist.append(num_links_with_trans)
+
+    return num_links_hist, num_links_with_trans_hist, num_trans_hist, finished_trans_hist
+
+def plot_links_info(ax, num_links_hist, num_links_with_trans_hist):
+    ax.plot(num_links_hist, 'g')
+    ax.plot(num_links_with_trans_hist, 'b')
+    num_link_patch = mpatches.Patch(color='green', label='num link')
+    num_trans_link_patch = mpatches.Patch(color='blue', label='num link with trans')
+    ax.legend(handles=[num_link_patch, num_trans_link_patch])
+
+def plot_links_trans_info(ax, num_trans_hist, finished_trans_hist):
+    ax.plot(num_trans_hist, 'g')
+    ax.plot(finished_trans_hist, 'b')
+    num_patch = mpatches.Patch(color='green', label='trans in the network')
+    finished_patch = mpatches.Patch(color='blue', label='finished trans')
+    ax.legend(handles=[num_patch, finished_patch])
+
+def convert_round_to_sec_unit(x):
+    return [trans_per_round*ROUND_PER_SEC*TRANS_MSG_LEN for trans_per_round in x]
+
+def plot_avg_throughput(ax, avg_throughput, avg_gen):
+    x_points = [ i for i in range(len(avg_throughput))]
+    avg_throughput_sec = convert_round_to_sec_unit(avg_throughput)
+    avg_gen_sec = convert_round_to_sec_unit(avg_gen)
+
+    ax.plot(x_points, avg_throughput_sec, 'g')
+    ax.plot(x_points, avg_gen_sec, 'b')
+    ax.set(ylabel='# 90percentile bytes per sec', xlabel='round')
+    avg_throughput_patch = mpatches.Patch(color='green', label='avg throughput')
+    avg_gen_patch = mpatches.Patch(color='blue', label='avg trans gen rate')
+    ax.legend(handles=[avg_throughput_patch, avg_gen_patch])
+
+def plot_graph_deg(degrees_mean, degrees_max, degrees_min):
+    ax.plot(degrees_mean, 'b', degrees_max, 'r', degrees_min, 'g') 
+    ax.yaxis.set_ticks(range(0, max(degrees_max)+1, 1))
+    ax.set(ylabel='node degree')
+    max_patch = mpatches.Patch(color='red', label='max')
+    min_patch = mpatches.Patch(color='green', label='min')
+    mean_patch = mpatches.Patch(color='blue', label='mean')
+    ax.legend(handles=[max_patch,min_patch,mean_patch])
+
+def plot_components(ax, honest_components):
+
+     ax.plot(honest_components)
+     ax.set(ylabel='# honest components', xlabel='round')
+
+def plot_eclipse_attack(snapshots, targets):
+    degrees_mean, degrees_max, degrees_min = get_degrees(snapshots)
+    components, honest_components = get_components(snapshots)
+    acc_recv_msg_hist, acc_gen_msg_hist = throughput_90(snapshots)
+    avg_throughput_hist = avg_throughput(acc_recv_msg_hist, 20)
+    avg_gen_hist = avg_throughput(acc_gen_msg_hist, 20)
+    eclipse_hist_in, eclipse_hist_out = analyze_eclipse(snapshots, targets[0])
+    num_links_hist, num_links_with_trans_hist, num_trans_hist, finished_trans_hist = analyze_network(snapshots)
+    mesh_hist_0 = profile_node(snapshots, 0)
+
+    fig, axs = plt.subplots(3)
+    
+
+    # print(num_trans_hist)
+    plot_components(axs[0], honest_components)
+    plot_links_trans_info(axs[1], num_trans_hist, finished_trans_hist)
+    # plot_links_info(axs[1], num_links_hist, num_links_with_trans_hist)
+    plot_avg_throughput(axs[2], avg_throughput_hist, avg_gen_hist)
+
+    # axs[2].plot(x_points, acc_recv_msg_hist)
+    # axs[2].plot(x_points, acc_gen_msg_hist)
+    # axs[2].set(ylabel='# 90trans', xlabel='round')
+    # axs[2].plot(honest_components)
+
+    # axs[2].plot(finished_trans_hist)
+    # axs[2].plot(num_trans_hist)
+    # x_points = [ i for i in range(len(degrees_mean))]
+    # in_conn = mpatches.Patch(color='green', label='honest incoming connection')
+    # out_conn = mpatches.Patch(color='blue', label='honest outgoing connection')
+    # axs[1].plot(x_points, eclipse_hist_in, color='green')
+    # axs[1].plot(x_points, eclipse_hist_out, color='blue')
+    # axs[1].set(ylabel='target node - num honest mesh node', xlabel='round')
+    # axs[1].legend(handles=[in_conn, out_conn])
+
+
+
+    
+    # max_y = max(max(avg_gen_hist), max(avg_throughput_hist))
+    # axs[2].yaxis.set_ticks(range(0, int(max_y)+1, 0.5))
+
+    plt.show()
 
 
 def analyze_snapshot(snapshots):
@@ -268,7 +373,7 @@ def analyze_snapshot(snapshots):
     avg_throughput_hist = avg_throughput(acc_recv_msg_hist, 20)
     avg_gen_hist = avg_throughput(acc_gen_msg_hist, 20)
 
-    fig, axs = plt.subplots(2)
+    fig, axs = plt.subplots(3)
     
     axs[0].plot(degrees_mean, 'b', degrees_max, 'r', degrees_min, 'g')
     axs[0].set(ylabel='node degree')
@@ -283,7 +388,6 @@ def analyze_snapshot(snapshots):
     
     # number of connectted component
     x_points = [ i for i in range(len(degrees_mean))]
-    #axs[1].set_yscale('log')
     axs[1].plot(x_points, eclipse_hist_in, color='green')
     axs[1].plot(x_points, eclipse_hist_out, color='blue')
     axs[1].set(ylabel='target node - num honest mesh node', xlabel='round')
@@ -293,12 +397,12 @@ def analyze_snapshot(snapshots):
 
 
     
-    # axs[2].plot(x_points, honest_components)
-    # axs[2].set(ylabel='# honest components', xlabel='round')
+    axs[2].plot(x_points, honest_components)
+    axs[2].set(ylabel='# honest components', xlabel='round')
 
     # x_points = [ i for i in range(len(acc_recv_msg_hist))]
     # axs[3].plot(x_points, acc_recv_msg_hist)
-    # # axs[3].plot(x_points, acc_gen_msg_hist)
+    # axs[3].plot(x_points, acc_gen_msg_hist)
     # axs[3].set(ylabel='# 90trans', xlabel='round')
 
     # axs[4].plot(x_points, avg_throughput_hist)

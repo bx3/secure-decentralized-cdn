@@ -3,15 +3,15 @@ import sys
 import os
 from experiment import Experiment
 from config import *
-from analyzer import *
+import analyzer
 import generate_network as gn
 import random
-random.seed(0)
+random.seed(31)
 
 if len(sys.argv) < 2:
     print("require subcommand: run, gen-network\n")
     print("run json epoch[int]")
-    print("gen-network num_pub[int] num_lurk[int] num_sybil[int] is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] prob[float]") 
+    print("gen-network num_pub[int] num_lurk[int] num_sybil[int] is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] interval_sec[float]") 
     print('exmaple: ./testbed.py run topo/one_pub.json 100')
     print('exmaple: ./testbed.py gen-network 10 90 0 n 20 1000000 0 1000000 0 0.5 > ten_pub.json')
     sys.exit()
@@ -48,11 +48,12 @@ elif cmd == "run":
     heartbeat = HEARTBEAT
     gossipsub = Experiment(setup, heartbeat)
     snapshots = gossipsub.start(epoch)
+    analyzer.plot_eclipse_attack(snapshots, [1])
     print("start analyze")
     # analyze_network(snapshots)
-    analyze_snapshot(snapshots)
+    # analyze_snapshot(snapshots)
     # dump_graph(snapshots[50])
-    dump_node(snapshots, 1)
+    # kdump_node(snapshots, 1)
     # dump_node(snapshots, 99)
 else:
     print('Require a valid subcommand', cmd)

@@ -8,6 +8,7 @@ from generate_network import parse_nodes
 from generate_network import NetBandwidth
 
 NetworkState = namedtuple('NetworkState', ['links', 'uplinks', 'downlinks'])
+LinkSnapshot = namedtuple('LinkSnapshot', ['num_msg', 'num_trans', 'finished_trans', 'up_remains', 'down_remains'])
 
 # direcdtion sensitive
 # assume network has infinite buffer volume
@@ -20,6 +21,17 @@ class LinkState:
         self.msgs = [msg]
         self.byte_transferred = msg.length # link statistics
         self.curr_msg_byte_transferred = 0 # count if curr msg finishes
+        self.finished_trans = 0
+
+    def get_link_snapshot(self):
+        return LinkSnapshot(
+            self.get_num_msg(),
+            self.get_num_trans(),
+            self.finished_trans,
+            self.up_remain,
+            self.down_remain
+            )
+
 
     def get_num_msg(self):
         return len(self.msgs)
@@ -69,6 +81,8 @@ class LinkState:
                 round(self.curr_msg_byte_transferred, 5) >= self.msgs[0].length):
             self.curr_msg_byte_transferred -= self.msgs[0].length 
             msg = self.msgs.pop(0)
+            if msg.mType == MessageType.TRANS:
+                self.finished_trans += 1
             completed.append(msg)
 
         return completed
@@ -89,6 +103,8 @@ class LinkState:
         while len(self.msgs) > 0 and self.curr_msg_byte_transferred > self.msgs[0].length:
             self.curr_msg_byte_transferred -= self.msgs[0].length 
             msg = self.msgs.pop(0)
+            if msg.mType == MessageType.TRANS:
+                self.finished_trans += 1
             completed.append(msg)
         return completed
 
@@ -327,8 +343,12 @@ class Network:
         return msg
 
     def take_snapshot(self):
+        links_shot = {}
+        for arr, link in self.controller.links.items():
+            links_shot[arr] = link.get_link_snapshot()
+
         state = NetworkState(
-            self.controller.links.copy(),
+            links_shot,
             self.controller.msg_uplink.copy(),
             self.controller.msg_downlink.copy()
             )

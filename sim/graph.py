@@ -28,7 +28,7 @@ class Peer:
 # assume there is only one topic then
 # generic data structure usable by all protocols
 class Node:
-    def __init__(self, role, u, prob, peers, heartbeat_period):
+    def __init__(self, role, u, interval, peers, heartbeat_period):
         self.id = u # my id
         self.role = role
         self.conn = set() # lazy push
@@ -37,14 +37,20 @@ class Node:
         self.peers = set(peers) # known peers
         self.out_msgs = [] # msg to push in the next round
         self.in_msgs = []
-        self.D_scores = 6 #
+        self.D_scores = 2 #
         self.scores = {} # all peer score, key is peer, value is PeerScoreCounter
         self.seqno = 0
-        self.D = 8 # curr in local mesh degree: incoming + outgoing
+        self.D = OVERLAY_D # curr in local mesh degree: incoming + outgoing
         self.D_out = 2 # num outgoing connections in the mesh; D_out < OVERLAY_DLO and D_out < D/2
 
         self.init_peers_scores()
-        self.gen_prob = prob
+
+        if interval == 0:
+            self.gen_prob = 0
+        else:
+            intervals_per_trans = float(interval) / float(SEC_PER_ROUND)
+            self.gen_prob = 1/intervals_per_trans  # per round 
+
         self.msg_ids = set()
         self.heartbeat_period = heartbeat_period
         self.gen_trans_num = 0
@@ -63,77 +69,23 @@ class Node:
     def run_scores_background(self, curr_r):
         for u, counters in self.scores.items():
             counters.run_background(curr_r)
-            #  if (self.id == 0 and u == 99):
-                #  print('0 update score for', u, 'new score:', counters.get_score())
-
-    def adv_process_msgs(self, r, target, favor_list):
-        # self.schedule_heartbeat(r)
-        self.run_scores_background(r)
-        self.round_trans_ids.clear()
-
-        while len(self.in_msgs) > 0:
-            msg = self.in_msgs.pop(0)
-            mtype, _, src, dst, _, _, _ = msg
-            if mtype == MessageType.HEARTBEAT:
-                continue
-
-            assert self.id == dst
-            if mtype == MessageType.GRAFT:
-                self.proc_GRAFT(msg, r)
-            elif mtype == MessageType.PRUNE:
-                self.proc_PRUNE(msg)
-            elif mtype == MessageType.LEAVE:
-                self.proc_LEAVE(msg) 
-            elif mtype == MessageType.IHAVE:
-                self.proc_IHAVE(msg) 
-            elif mtype == MessageType.IWANT:
-                self.proc_IWANT(msg) 
-            elif mtype == MessageType.PX:
-                self.proc_PX(msg)
-            elif mtype == MessageType.HEARTBEAT:
-                self.proc_Heartbeat(msg, r)
-            elif mtype == MessageType.TRANS:
-                self.adv_proc_TRANS(msg, r, target, favor_list)
-            else:
-                # Invalid msgs
-                self.scores[src].update_p4()
-        
-    def adv_proc_TRANS(self, msg, r, target, favor_list):
-        _, mid, src, _, _, _, trans_id = msg
-        self.scores[src].add_msg_delivery()
-        # if not seen msg before
-        if mid not in self.msg_ids:
-            self.msg_ids.add(mid)
-            self.scores[src].update_p2()
-            self.round_trans_ids.add(trans_id)
-            # push it to other peers in mesh if not encountered
-            if trans_id not in self.trans_set:
-                # print(self.id, self.mesh)
-                for peer in self.mesh:
-                    if peer in favor_list:
-                        msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
-                        self.out_msgs.append(msg)
-                    elif peer != src and peer < 50:
-                        # print("send long msg to peer", peer)
-                        msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN*100, trans_id)
-                        self.out_msgs.append(msg)
-                self.trans_set.add(trans_id)
 
     # worker func 
     def process_msgs(self, r):
         # schedule heartbeat 
-        self.schedule_heartbeat(r)
+        # self.schedule_heartbeat(r)
         # background peer local view update
         self.run_scores_background(r)
         self.round_trans_ids.clear()
         # handle msgs 
         while len(self.in_msgs) > 0:
             msg = self.in_msgs.pop(0)
-            mtype, _, src, dst, _, _, _ = msg
+            mtype, _, src, dst, _, _, payload = msg
             assert self.id == dst
             if mtype == MessageType.GRAFT:
                 self.proc_GRAFT(msg, r)
             elif mtype == MessageType.PRUNE:
+                # print(self.id, 'recv PRUNE from', src)
                 self.proc_PRUNE(msg)
             elif mtype == MessageType.LEAVE:
                 self.proc_LEAVE(msg) 
@@ -148,13 +100,14 @@ class Node:
                     self.last_heartbeat = r
                     self.proc_Heartbeat(msg, r)
             elif mtype == MessageType.TRANS:
-                self.proc_TRANS(msg, r)
+                    # print(self.id, 'recv trans', payload, 'from', src, 'mesh', self.mesh)
+                    self.proc_TRANS(msg, r)
             else:
-                # Invalid msgs
-                self.scores[src].update_p4()
+                self.scores[src].update_p4() # Invalid msgs
         
         if self.role == NodeType.PUB:
-            self.gen_trans()
+            # if r<1:
+            self.gen_trans(r)
 
     def schedule_heartbeat(self, r):
         if self.role == NodeType.PUB or self.role == NodeType.LURK:
@@ -170,7 +123,7 @@ class Node:
         self.last_heartbeat = r
 
     # only gen transaction when previous one is at least pushed 
-    def gen_trans(self):
+    def gen_trans(self, r):
         for msg in self.out_msgs:
             mtype, _, _, _, _, _, tid = msg
             # if my last msg is not pushed, give up
@@ -179,9 +132,11 @@ class Node:
 
         if random.random() < self.gen_prob:
             self.gen_trans_num += 1
+            # print('generate a message', self.id, r)
             for peer in self.mesh:
                 trans_id = TransId(self.id, self.gen_trans_num)
                 msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                # print(self.id, 'generate trans', trans_id, 'to', peer)
                 self.out_msgs.append(msg)
 
     def proc_TRANS(self, msg, r):
@@ -199,6 +154,7 @@ class Node:
                 for peer in self.mesh:
                     if peer != src:
                         msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                        # print(self.id, 'forward', trans_id, 'to', peer)
                         self.out_msgs.append(msg)
                 self.trans_set.add(trans_id)
 
@@ -230,13 +186,20 @@ class Node:
     def graft_peer(self, peer, r):
         msg = self.gen_msg(MessageType.GRAFT, peer, CTRL_MSG_LEN, None)
         self.mesh[peer] = Direction.Outgoing
-        self.scores[peer].in_mesh = True
         if peer not in self.scores:
             self.scores[peer] = PeerScoreCounter()
+        self.scores[peer].in_mesh = True
         #  if (self.id == 0):
             #  print('Round {}: 0 graft {}, new score is {}'.format(r, peer, self.scores[peer].get_score()))
         self.scores[peer].init_r(r)
         self.out_msgs.append(msg)
+
+    def setup_peer(self, peer, direction, r):
+        self.mesh[peer] = direction 
+        if peer not in self.scores:
+            self.scores[peer] = PeerScoreCounter()
+        self.scores[peer].in_mesh = True
+        self.scores[peer].init_r(r)
 
     # TODO generate IHave
     def proc_Heartbeat(self, msg, r):
@@ -349,20 +312,44 @@ class Node:
         if src in self.mesh:
             self.mesh.pop(src, None)
             self.scores[src].in_mesh = False
-         
+
+    # return true if it won't pass
+    def filter_graft(self, msg, r):
+        _, _, src, _, _, _, _ = msg
+        # already in mesh
+        if src in self.mesh:
+            return True
+        # check score
+        if src in self.scores:
+            counters = self.scores[src]
+            if counters.get_score() < 0:
+                return True
+
+        is_outbound = False
+        for peer, direction in self.mesh.items():
+            if src == peer and direction == Direction.Outgoing:
+                is_outbound = True
+        # check existing number peer in the mesh
+        if len(self.mesh) > OVERLAY_DHI and (not is_outbound):
+            return True
+
+        msg = self.gen_msg(MessageType.PRUNE, src, CTRL_MSG_LEN, None)
+        self.out_msgs.append(msg)
+
+        return False
 
     # the other peer has added me to its mesh, I will add it too 
     def proc_GRAFT(self, msg, r):
         _, _, src, _, _, _, _ = msg
+        if self.filter_graft(msg, r):
+            # print(self.id, 'refuse a GRAFT from', src)
+            return 
+
         self.mesh[src] = Direction.Incoming
         if src not in self.scores:
             self.scores[src] = PeerScoreCounter()
-        #  if (self.id == 0):
-            #  print('Round {}: 0 graft {}, new score is {}'.format(r, src, self.scores[src].get_score()))
         self.scores[src].in_mesh = True
         self.peers.add(src)
-        # if self.id > 50 or self.id == 1:
-        #     print(self.id, 'graft', src)
         self.out_msgs.append(msg)
 
     def proc_LEAVE(self, msg):

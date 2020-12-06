@@ -50,7 +50,7 @@ def generate_network(
         n_pub, n_lurk, n_sybil, 
         down_mean, down_std, 
         up_mean, up_std,
-        prob):
+        interval):
     nodes = []
     i = 0
     for _ in range(n_pub):
@@ -63,7 +63,7 @@ def generate_network(
             "known": peers,
             "downB": downB,
             "upB": upB,
-            "prob": prob
+            "interval": interval
         }
         nodes.append(node)
         i += 1
@@ -79,7 +79,7 @@ def generate_network(
             "known": peers,
             "downB": downB,
             "upB": upB,
-            "prob": 0 
+            "interval": 0 
         }
         nodes.append(node)
         i += 1
@@ -95,7 +95,7 @@ def generate_network(
             "known": known,
             "downB": MAX_BANDWIDTH,
             "upB": MAX_BANDWIDTH,
-            "prob": 0 # manually attack
+            "interval": 0 # manually attack
         }
         nodes.append(node)
         i += 1
@@ -110,7 +110,7 @@ def generate_network(
             "DOWN_STD": down_std,
             "UP_MEAN": up_mean,
             "UP_STD": up_std,
-            "PROB": prob
+            "INTERVAL": interval
         }
     setup = {"summery": summery, "nodes": nodes}
     print(json.dumps(setup, indent=4))
