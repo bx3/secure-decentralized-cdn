@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import networkx as nx
 import xlsxwriter 
 from collections import defaultdict
 from config import *
@@ -178,8 +179,8 @@ def avg_throughput(acc_recv_msg_hist, avg_step=10):
         avg_throughput_hist.append(avg_throughput)
     return avg_throughput_hist
 
-def dump_node(snapshots, node_id):
-    workbook = xlsxwriter.Workbook('node{}.xlsx'.format(node_id)) 
+def dump_node(snapshots, node_id, data_dir=None):
+    workbook = xlsxwriter.Workbook(data_dir+'/node{}.xlsx'.format(node_id)) 
     worksheet = workbook.add_worksheet()
     bold = workbook.add_format({'bold': True})
     red = workbook.add_format({'font_color': 'red'})
@@ -441,3 +442,37 @@ def analyze_snapshot(snapshots):
             # trans_recv.pop(tid, None)
         # acc_recv_msg_hist.append(len(reached90_transid))
         # acc_gen_msg_hist.append(acc_gen_msg)
+
+def visualize_network(nodes, draw_nodes='all'):
+    subset_color = {NodeType.PUB: 'limegreen', NodeType.LURK: 'yellow', NodeType.SYBIL: 'red'}
+    color = []
+    
+    G = nx.Graph()
+    if draw_nodes == 'all':
+        for node in nodes:
+            G.add_node(node)
+            color.append(subset_color[nodes[node].role])
+        for node in nodes:
+            for m in nodes[node].mesh:
+                G.add_edge(node, m)
+
+        nx.draw(G,node_color=color, with_labels=True)
+    else:
+        edge_labels = {}
+        for node in draw_nodes:
+            if not G.has_node(node):
+                G.add_node(node)
+                color.append(subset_color[nodes[node].role])
+            for m in nodes[node].mesh:
+                if not G.has_node(m):
+                    G.add_node(m)
+                    color.append(subset_color[nodes[m].role])
+                edge_labels[(node, m)] = round(nodes[node].scores[m], 3)
+                G.add_edge(node, m)
+                    #  edge_labels[(m, node)] = '({}, {})'.format(edge_labels[(m, node)], nodes[node].scores[m])
+                
+        pos = nx.spring_layout(G)
+        nx.draw(G,pos,node_color=color, with_labels=True)
+        nx.draw_networkx_edge_labels(G,pos,edge_labels=edge_labels,label_pos=0.8,font_size=7)
+    plt.show()
+    

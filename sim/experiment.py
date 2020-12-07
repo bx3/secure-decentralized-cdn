@@ -38,18 +38,20 @@ class Experiment:
     # # # # # # # # 
     #  main loop  #
     # # # # # # # # 
-    def start(self, epoch):
-        for r in range(epoch):
+    def start(self, epoch, start_round=0, attack_strategy='None', attack_target=1):
+        for r in range(start_round, start_round+epoch):
             # network store messages from honest nodes
             self.push_honest_msgs(r)
             # start attack
-            self.attack(r)
+            if attack_strategy == 'eclipse':
+                self.attack(r, attack_target)
             # network deliver msgs
             self.deliver_msgs(r)
             # honest node retrieve msgs 
             self.honest_nodes_handle_msgs(r)
-            # sybil node retrieve msgs
-            self.sybil_nodes_handle_msgs(r)
+            if attack_strategy == 'flash':
+                # sybil node retrieve msgs
+                self.sybil_nodes_handle_msgs(r)
             # take snapshot
             self.take_snapshot(r)
             #print("round", r, "finish using ", time.time()-start)
@@ -63,11 +65,11 @@ class Experiment:
                 msgs = node.send_msgs() 
                 self.network.push_msgs(msgs, curr_r)
 
-    def attack(self, r):
+    def attack(self, r, attack_target=1):
         # chosen attack strategy to generate new messgae and arrange network 
         # if (not self.adversary.has_target()) and len(self.snapshots) > 0:
             # self.adversary.find_eclipse_publisher_target(r, self.snapshots)
-        self.adversary.target = 1 # some hack
+        self.adversary.target = attack_target # some hack
         adv_msgs = self.adversary.eclipse_target(r, self.snapshots) # only possess snapshots
         self.network.push_msgs(adv_msgs, r)
                  

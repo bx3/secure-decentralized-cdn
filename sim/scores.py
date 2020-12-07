@@ -52,6 +52,7 @@ class PeerScoreCounter:
             self.decay_r = curr_r
             self.decay()
 
+
     def update_p1(self, r):
         if self.in_mesh:
             #  self.mesh_r = r - self.graft_r
@@ -118,7 +119,7 @@ class PeerScoreCounter:
 
         # self.score = score1 + score2 + score3a + score3b + score4 + score5 + score6 
         self.score = score1+ score2 + score3a + score4 + score5 + score6 
-        return 0 #self.score
+        return self.score
 
     def get_fake_score(self):
         self.fake_score += random.uniform(-1,1)
