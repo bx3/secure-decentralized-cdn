@@ -473,6 +473,6 @@ def visualize_network(nodes, draw_nodes='all'):
                 
         pos = nx.spring_layout(G)
         nx.draw(G,pos,node_color=color, with_labels=True)
-        nx.draw_networkx_edge_labels(G,pos,edge_labels=edge_labels,label_pos=0.8,font_size=7)
+        nx.draw_networkx_edge_labels(G,pos,edge_labels=edge_labels,label_pos=0.7,font_size=7)
     plt.show()
     

@@ -75,11 +75,11 @@ elif cmd == "demo":
     total_rounds = 0
     snapshots = []
     while True:
-        rounds = input("Enter simulation rounds, type 'exit' to exit: ")
+        rounds = input("Enter simulation rounds, such as '20'. Type 'exit' to exit: ")
         if rounds == 'exit':
             break
 
-        attack = input("Enter the attack type. If not, enter 'n': ")
+        attack = input("Enter the attack type, such as 'eclipse' or 'flash'. If not, enter 'n': ")
         if attack == 'n':
             snapshots = snapshots + gossipsub.start(int(rounds), start_round=total_rounds)
         else:
@@ -95,7 +95,7 @@ elif cmd == "demo":
         print('Total simulation rounds: {}'.format(total_rounds))
         analyzer.visualize_network(snapshots[-1].nodes, draw_nodes='all')
 
-        sub_nodes = [int(item) for item in input("Enter the nodes you want to zoom out with space as seperator. If not, just enter '-1': ").split()] 
+        sub_nodes = [int(item) for item in input("Enter the nodes you want to zoom out with space as seperator, such as '0 13 67'. If not, just enter '-1': ").split()] 
         if sub_nodes == [-1]:
             continue
         analyzer.visualize_network(snapshots[-1].nodes, draw_nodes=sub_nodes)
