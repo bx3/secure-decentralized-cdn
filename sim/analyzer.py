@@ -445,20 +445,28 @@ def analyze_snapshot(snapshots):
 
 def visualize_network(nodes, draw_nodes='all'):
     subset_color = {NodeType.PUB: 'limegreen', NodeType.LURK: 'yellow', NodeType.SYBIL: 'red'}
-    color = []
-    
-    G = nx.Graph()
-    if draw_nodes == 'all':
-        for node in nodes:
-            G.add_node(node)
-            color.append(subset_color[nodes[node].role])
-        for node in nodes:
-            for m in nodes[node].mesh:
-                G.add_edge(node, m)
+    pub_patch = mpatches.Patch(color='limegreen', label='PUB')
+    lurk_patch = mpatches.Patch(color='yellow', label='LURK')
+    sybil_patch = mpatches.Patch(color='red', label='SYBIL')
 
-        nx.draw(G,node_color=color, with_labels=True)
-    else:
+    color = []
+    G = nx.Graph()
+    for node in nodes:
+        G.add_node(node)
+        color.append(subset_color[nodes[node].role])
+    for node in nodes:
+        for m in nodes[node].mesh:
+            G.add_edge(node, m)
+
+    plt.figure(num=0, figsize=(24, 12), dpi=80, facecolor='w', edgecolor='k')
+    nx.draw(G, node_color=color, with_labels=True, edgecolors='black')
+    plt.legend(handles=[pub_patch, lurk_patch, sybil_patch])
+
+    if draw_nodes != 'all':
+        color = []
+        G = nx.Graph()
         edge_labels = {}
+        fig = plt.figure(num=1, figsize=(24, 12), dpi=80, facecolor='w', edgecolor='k')
         for node in draw_nodes:
             if not G.has_node(node):
                 G.add_node(node)
@@ -469,10 +477,12 @@ def visualize_network(nodes, draw_nodes='all'):
                     color.append(subset_color[nodes[m].role])
                 edge_labels[(node, m)] = round(nodes[node].scores[m], 3)
                 G.add_edge(node, m)
-                    #  edge_labels[(m, node)] = '({}, {})'.format(edge_labels[(m, node)], nodes[node].scores[m])
-                
+	    
         pos = nx.spring_layout(G)
-        nx.draw(G,pos,node_color=color, with_labels=True)
+        nx.draw(G,pos,node_color=color, with_labels=True, edgecolors='black')
         nx.draw_networkx_edge_labels(G,pos,edge_labels=edge_labels,label_pos=0.7,font_size=7)
+        plt.legend(handles=[pub_patch, lurk_patch, sybil_patch])
+
     plt.show()
+
     
