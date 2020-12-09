@@ -51,7 +51,7 @@ class Experiment:
             self.deliver_msgs(r)
             # honest node retrieve msgs 
             self.honest_nodes_handle_msgs(r)
-            if attack_strategy == 'flash':
+            if attack_strategy != 'flash':
                 # sybil node retrieve msgs
                 self.sybil_nodes_handle_msgs(r)
             # take snapshot

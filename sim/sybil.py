@@ -63,7 +63,7 @@ class Sybil:
                 #  print('0 update score for', u, 'new score:', counters.get_score())
 
     def adv_process_msgs(self, r, target, favor_list):
-        # self.schedule_heartbeat(r)
+        self.schedule_heartbeat(r)
         self.run_scores_background(r)
         self.round_trans_ids.clear()
 
