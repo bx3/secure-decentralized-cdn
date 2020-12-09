@@ -62,8 +62,8 @@ class Sybil:
             #  if (self.id == 0 and u == 99):
                 #  print('0 update score for', u, 'new score:', counters.get_score())
 
-    def adv_process_msgs(self, r, target, favor_list):
-        self.schedule_heartbeat(r)
+    def adv_process_msgs(self, r, target, favor_list, attack):
+        #  self.schedule_heartbeat(r)
         self.run_scores_background(r)
         self.round_trans_ids.clear()
 
@@ -89,11 +89,11 @@ class Sybil:
             elif mtype == MessageType.HEARTBEAT:
                 self.proc_Heartbeat(msg, r)
             elif mtype == MessageType.TRANS:
-                self.adv_proc_TRANS(msg, r, target, favor_list)
+                self.adv_proc_TRANS(msg, r, target, favor_list, attack)
             else:
                 self.scores[src].update_p4()
         
-    def adv_proc_TRANS(self, msg, r, target, favor_list):
+    def adv_proc_TRANS(self, msg, r, target, favor_list, attack):
         _, mid, src, _, _, _, trans_id = msg
         self.scores[src].add_msg_delivery()
         # if not seen msg before
@@ -105,13 +105,18 @@ class Sybil:
             if trans_id not in self.trans_set:
                 # print(self.id, self.mesh)
                 for peer in self.mesh:
-                    if peer in favor_list:
-                        msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
-                        self.out_msgs.append(msg)
-                    elif peer != src and peer < 50:
-                        # print("send long msg to peer", peer)
-                        msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN*100, trans_id)
-                        self.out_msgs.append(msg)
+                    if (attack == 'eclipse'):
+                        if peer in favor_list:
+                            msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                            self.out_msgs.append(msg)
+                        elif peer != src and peer < 50:
+                            # print("send long msg to peer", peer)
+                            msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN*100, trans_id)
+                            self.out_msgs.append(msg)
+                    else:
+                        if peer != src:
+                            msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                            self.out_msgs.append(msg)
                 self.trans_set.add(trans_id)
 
     def gen_msg(self, mtype, peer, msg_len, payload):

@@ -53,7 +53,7 @@ class Experiment:
             self.honest_nodes_handle_msgs(r)
             if attack_strategy != 'flash':
                 # sybil node retrieve msgs
-                self.sybil_nodes_handle_msgs(r)
+                self.sybil_nodes_handle_msgs(r, attack_strategy)
             # take snapshot
             self.take_snapshot(r)
             #print("round", r, "finish using ", time.time()-start)
@@ -99,8 +99,8 @@ class Experiment:
             if node.role != NodeType.SYBIL:
                 node.process_msgs(curr_r)
 
-    def sybil_nodes_handle_msgs(self, curr_r):
-        self.adversary.handle_msgs(curr_r)
+    def sybil_nodes_handle_msgs(self, curr_r, attack):
+        self.adversary.handle_msgs(curr_r, attack)
 
 
     def take_snapshot(self, r):

@@ -96,9 +96,9 @@ class Adversary:
 
 
 
-    def handle_msgs(self, r):
+    def handle_msgs(self, r, attack):
         for i, sybil in self.sybils.items():
-            sybil.adv_process_msgs(r, self.target, self.favor_list)
+            sybil.adv_process_msgs(r, self.target, self.favor_list, attack)
 
     def eclipse_target(self, r, snapshots):
         if not self.has_target():
