@@ -456,18 +456,21 @@ def visualize_network(nodes, draw_nodes='all'):
         color.append(subset_color[nodes[node].role])
     for node in nodes:
         for m in nodes[node].mesh:
-            G.add_edge(node, m)
+            if node in nodes[m].mesh:
+                G.add_edge(node, m)
 
     plt.figure(num=0, figsize=(24, 12), dpi=80, facecolor='w', edgecolor='k')
     nx.draw(G, node_color=color, with_labels=True, edgecolors='black')
     plt.legend(handles=[pub_patch, lurk_patch, sybil_patch])
 
     if draw_nodes != 'all':
+        table_data = [['Node', 'Out Msgs (id, src)']]
         color = []
         G = nx.Graph()
         edge_labels = {}
         fig = plt.figure(num=1, figsize=(24, 12), dpi=80, facecolor='w', edgecolor='k')
         for node in draw_nodes:
+            row_data = [node]
             if not G.has_node(node):
                 G.add_node(node)
                 color.append(subset_color[nodes[node].role])
@@ -478,10 +481,23 @@ def visualize_network(nodes, draw_nodes='all'):
                 edge_labels[(node, m)] = round(nodes[node].scores[m], 3)
                 G.add_edge(node, m)
 	    
+            out_msgs = ''
+            for msg in nodes[node].out_msgs:
+                out_msgs += '({},{}) '.format(msg.id, msg.src)
+            if out_msgs == '':
+                out_msgs = 'None'
+            row_data.append(out_msgs)
+            table_data.append(row_data)
+
         pos = nx.spring_layout(G)
         nx.draw(G,pos,node_color=color, with_labels=True, edgecolors='black')
         nx.draw_networkx_edge_labels(G,pos,edge_labels=edge_labels,label_pos=0.7,font_size=7)
         plt.legend(handles=[pub_patch, lurk_patch, sybil_patch])
+
+        table = plt.table(cellText=table_data, colWidths=[0.02, 0.06], loc='upper left')
+        table.set_fontsize(8)
+        #  table.scale(1,4)
+        # table.axis('off')
 
     plt.show()
 

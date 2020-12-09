@@ -15,6 +15,7 @@ class Snapshot:
         self.round = 0
         self.nodes = {} # key:node id value: node state
         self.sybils = {}
+        self.all_nodes = {}
         self.network = None # message queue in for each node
 
 class Experiment:
@@ -22,6 +23,7 @@ class Experiment:
         self.snapshots = []
         self.nodes = {}  # honest nodes
         self.sybils = {}
+        self.all_nodes = {}
 
         self.network = Network(setup_json)
         self.heartbeat_period = heartbeat
@@ -111,6 +113,7 @@ class Experiment:
         for u, sybil in self.sybils.items():
             snapshot.sybils[u] = sybil.get_states()
 
+        snapshot.all_nodes = {**(snapshot.nodes), **(snapshot.sybils)}
         # get network 
         snapshot.network = self.network.take_snapshot()
         
@@ -142,8 +145,9 @@ class Experiment:
                 sys.exit(0)
 
     def setup_mesh(self):
+        self.all_nodes = {**(self.nodes), **(self.sybils)}
         mesh = {} # key is node, value is mesh nodes
-        for u, node in self.nodes.items():
+        for u, node in self.all_nodes.items():
             num_out = int(OVERLAY_D / 2)
             known_peers = node.peers.copy()
             known_peers = list(known_peers)
@@ -151,7 +155,7 @@ class Experiment:
             chosen = known_peers[:num_out]
             for v in chosen:
                 node.setup_peer(v, Direction.Outgoing, 0)
-                self.nodes[v].setup_peer(u, Direction.Incoming, 0) 
+                self.all_nodes[v].setup_peer(u, Direction.Incoming, 0) 
 
 
 # for u, node in self.nodes.items():

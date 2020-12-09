@@ -93,12 +93,12 @@ elif cmd == "demo":
         total_rounds += int(rounds)
 
         print('Total simulation rounds: {}'.format(total_rounds))
-        analyzer.visualize_network(snapshots[-1].nodes, draw_nodes='all')
+        analyzer.visualize_network(snapshots[-1].all_nodes, draw_nodes='all')
 
-        sub_nodes = [int(item) for item in input("Enter the nodes you want to zoom out with space as seperator, such as '0 13 67'. If not, just enter '-1': ").split()] 
+        sub_nodes = [int(item) for item in input("Enter the nodes you want to zoom in with space as seperator, such as '0 13 67'. If not, just enter '-1': ").split()] 
         if sub_nodes == [-1]:
             continue
-        analyzer.visualize_network(snapshots[-1].nodes, draw_nodes=sub_nodes)
+        analyzer.visualize_network(snapshots[-1].all_nodes, draw_nodes=sub_nodes)
         for sub_node in sub_nodes:
             analyzer.dump_node(snapshots, sub_node, data_dir)
 

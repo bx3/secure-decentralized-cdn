@@ -73,7 +73,7 @@ class Node:
     # worker func 
     def process_msgs(self, r):
         # schedule heartbeat 
-        # self.schedule_heartbeat(r)
+        self.schedule_heartbeat(r)
         # background peer local view update
         self.run_scores_background(r)
         self.round_trans_ids.clear()

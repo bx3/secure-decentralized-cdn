@@ -146,6 +146,13 @@ class Sybil:
         self.scores[peer].init_r(r)
         self.out_msgs.append(msg)
 
+    def setup_peer(self, peer, direction, r):
+        self.mesh[peer] = direction 
+        if peer not in self.scores:
+            self.scores[peer] = PeerScoreCounter()
+        self.scores[peer].in_mesh = True
+        self.scores[peer].init_r(r)
+
     def init_peers_scores(self):
         for p in self.peers:
             self.scores[p] = PeerScoreCounter()
