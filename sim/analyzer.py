@@ -309,7 +309,7 @@ def plot_avg_throughput(ax, avg_throughput, avg_gen):
     avg_gen_patch = mpatches.Patch(color='blue', label='avg trans gen rate')
     ax.legend(handles=[avg_throughput_patch, avg_gen_patch])
 
-def plot_graph_deg(degrees_mean, degrees_max, degrees_min):
+def plot_graph_deg(ax, degrees_mean, degrees_max, degrees_min):
     ax.plot(degrees_mean, 'b', degrees_max, 'r', degrees_min, 'g') 
     ax.yaxis.set_ticks(range(0, max(degrees_max)+1, 1))
     ax.set(ylabel='node degree')
@@ -501,4 +501,49 @@ def visualize_network(nodes, draw_nodes='all'):
 
     plt.show()
 
-    
+   
+def print_node(t, node, sybils, nodes):
+    print('id         ', t)
+    print('num mesh   ', len(node.mesh))
+    print('role       ', node.role)
+    # print('num in msg ', len(node.num_in_msg))
+    # print('num out msg', len(node.num_out_msg))
+
+    for peer in node.mesh:
+        score = round(node.scores[peer], 2)
+        sd = node.scores_decompose[peer]
+        data = "peer {peer}: {score} = {p1} {p2} {p3a} {p3b} {p4} {p5} {p6}".format(
+            peer=peer,
+            score=score,
+            p1=sd.p1, p2=sd.p2, p3a=sd.p3a, p3b=sd.p3b, p4=sd.p4, p5=sd.p5, p6=sd.p6)
+
+        is_targeted = False
+        if peer in nodes:
+            for v in nodes[peer].mesh:
+                if v in sybils:
+                    is_targeted = True
+            if not is_targeted:
+                print(data)
+            else:
+                print("\033[93m" + data + "\033[0m")
+        else:
+            print("\033[91m" + data + "\033[0m")
+
+# last snapshot
+def print_target_info(snapshot, targets):
+    nodes = snapshot.nodes
+    sybils = snapshot.sybils
+    for t in targets:
+        print("\t\tTargeted")
+        print_node(t, nodes[t], sybils, nodes)
+
+
+def print_sybil(u, sybil):
+    peers = list(sybil.mesh.keys())
+    print("id {sybil_id}, peers {peers}".format(sybil_id=u, peers=peers))
+
+def print_sybils(snapshot):
+    sybils = snapshot.sybils
+    print("\t\tSybils")
+    for u, sybil in sybils.items():
+        print_sybil(u, sybil)

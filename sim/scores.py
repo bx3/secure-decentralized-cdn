@@ -120,6 +120,29 @@ class PeerScoreCounter:
         self.score = score1 + score2 + score3a + score3b + score4 + score5 + score6 
         return self.score
 
+    def get_score2(self):
+        score2 = self.W2 * self.P2
+        if score2 > FIRST_MESSAGE_DELIVERIES_CAP:
+            score2 = FIRST_MESSAGE_DELIVERIES_CAP
+        return score2
+
+    def get_score3a(self):
+        return self.W3a * self.P3a
+    def get_score3b(self):
+        return self.W3b * self.P3b
+    def get_score4(self):
+        return self.W4 * self.P4
+    def get_score5(self):
+        return self.W5 * self.P5
+    def get_score6(self):
+        return self.W6 * self.P6
+
+    def get_score1(self):
+        score1 = self.W1 * self.P1
+        if score1 > TIME_IN_MESH_CAP:
+            score1 = TIME_IN_MESH_CAP
+        return score1
+
     def get_fake_score(self):
         self.fake_score += random.uniform(-1,1)
         return self.fake_score

@@ -101,7 +101,44 @@ elif cmd == "demo":
         analyzer.visualize_network(snapshots[-1].all_nodes, draw_nodes=sub_nodes)
         for sub_node in sub_nodes:
             analyzer.dump_node(snapshots, sub_node, data_dir)
+elif cmd == "term":
+    if len(sys.argv) < 2:
+        print("require arguments")
+        sys.exit(0)
+    setup = sys.argv[2]
+    heartbeat = HEARTBEAT
+    gossipsub = Experiment(setup, heartbeat)
 
+    if not os.path.isdir('data'):
+        os.mkdir('data')
+    x = datetime.datetime.now()
+    data_dir = 'data/'+x.strftime("%Y-%m-%d-%H-%M-%S")
+    os.makedirs(data_dir)
+
+    total_rounds = 0
+    snapshots = []
+    history_targets = set()
+    while True:
+        rounds = 20 # input("Enter simulation rounds, such as '20'. Type 'exit' to exit: ")
+        if rounds == 'exit':
+            break
+
+        targets_input = input("next targets: ")
+        targets = [int(i) for i in targets_input.split()]
+        for t in targets:
+            history_targets.add(t)
+
+        snapshots = snapshots + gossipsub.start(int(rounds), total_rounds, 'eclipse', targets)
+        # analyzer.visualize_network(snapshots[-1].nodes, draw_nodes='all')
+        total_rounds += int(rounds)
+
+        os.system('clear')
+        if len(targets) >0:
+            analyzer.print_target_info(snapshots[-1], targets)
+            analyzer.print_sybils(snapshots[-1])
+        else:
+            analyzer.print_target_info(snapshots[-1], history_targets)
+            analyzer.print_sybils(snapshots[-1])
 else:
     print('Require a valid subcommand', cmd)
 

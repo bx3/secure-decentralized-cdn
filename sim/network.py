@@ -22,6 +22,7 @@ class LinkState:
         self.byte_transferred = msg.length # link statistics
         self.curr_msg_byte_transferred = 0 # count if curr msg finishes
         self.finished_trans = 0
+        self.frozen = 0 # count down to be active
 
     def get_link_snapshot(self):
         return LinkSnapshot(
@@ -31,6 +32,9 @@ class LinkState:
             self.up_remain,
             self.down_remain
             )
+
+    def set_froze_count(self, count):
+        self.frozen = count
 
 
     def get_num_msg(self):
@@ -56,6 +60,10 @@ class LinkState:
     # use separate functions(up, down), implicitly assume there is no inter network routing delay
     # between up and down
     def update_up(self, up_bd):
+        if self.frozen > 0:
+            self.frozen -= 1
+            return 0
+
         uploaded_byte = up_bd * SEC_PER_ROUND
         if self.up_remain >= uploaded_byte:
             self.up_remain -= uploaded_byte
@@ -89,6 +97,10 @@ class LinkState:
 
     # NOT USED, SEPARATED INTO up and down, old comment up_bd, down_bd are used in current round
     def update(self, up_bd, down_bd):
+        if self.frozen > 0:
+            self.frozen -= 1
+            return [] 
+
         completed = []
         uploaded_byte = up_bd * SEC_PER_ROUND
         downloaded_byte = down_bd * SEC_PER_ROUND
@@ -178,6 +190,9 @@ class Controller:
 
         my_down_bd = downlink_share[my_pair] * my_link.down_limit 
         return my_down_bd
+
+    
+
 
     # drain links in one round
     def drain_links(self):
@@ -273,6 +288,12 @@ class Network:
         self.controller = Controller()
         self.netband = {}
         self.load_network(setup_json)
+
+    # used by adversary to delay message
+    def break_link(self, pair, frozen_round):
+        if pair in self.controller.links:
+            link = self.controller.links[arrow]
+            link.set_froze_count(frozen_round)
 
     def load_network(self, setup_json):
         nodes = parse_nodes(setup_json)

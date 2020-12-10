@@ -100,7 +100,7 @@ class Adversary:
         for i, sybil in self.sybils.items():
             sybil.adv_process_msgs(r, self.target, self.favor_list, attack)
 
-    def eclipse_target(self, r, snapshots):
+    def eclipse_target(self, r, snapshots, network):
         if not self.has_target():
             print('Warning. No target')
         msgs = []

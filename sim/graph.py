@@ -13,12 +13,14 @@ State = namedtuple('State', [
     'peers', 
     'out_msgs', 
     'scores', 
+    'scores_decompose',
     'trans_set', 
     'transids', 
     'gen_trans_num', 
     'out_conn']
     )
 TransId = namedtuple('TransId', ['src', 'no'])
+ScoreRecord = namedtuple('ScoreRecord', ['p1', 'p2', 'p3a', 'p3b', 'p4', 'p5', 'p6'])
 
 class Peer:
     def __init__(self, direciton):
@@ -409,8 +411,21 @@ class Node:
     # return State, remember to return a copy
     def get_states(self):
         scores_value = {} # key is peer
+
+        scores_decompose = {}
         for peer in self.scores:
             scores_value[peer] = self.scores[peer].get_score()
+            counters = self.scores[peer]
+            s = ScoreRecord(
+                round(counters.get_score1(), 2),
+                round(counters.get_score2(), 2),
+                round(counters.get_score3a(), 2),
+                round(counters.get_score3b(), 2),
+                round(counters.get_score4(), 2),
+                round(counters.get_score5(), 2),
+                round(counters.get_score6(), 2),
+            )
+            scores_decompose[peer] = s
 
         out_conn = []
         for peer, direction in self.mesh.items():
@@ -424,6 +439,7 @@ class Node:
                 self.peers.copy(), 
                 self.out_msgs.copy(), 
                 scores_value, 
+                scores_decompose,
                 self.trans_set.copy(), 
                 self.round_trans_ids.copy(), 
                 self.gen_trans_num,
