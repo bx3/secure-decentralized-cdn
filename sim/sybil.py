@@ -5,6 +5,8 @@ from collections import namedtuple
 from messages import *
 from scores import PeerScoreCounter
 import sys
+from attacks import Notes
+from attacks import AttackType
 
 State = namedtuple('State', [
     'role', 
@@ -49,6 +51,7 @@ class Sybil:
         self.trans_set = set()
 
         self.last_heartbeat = -1
+        self.notes = Notes(u)
 
         # useful later 
         self.topics = set()
@@ -56,27 +59,36 @@ class Sybil:
     def insert_msg_buff(self, msgs):
         self.in_msgs += msgs # append
 
+    def insert_attack_note(self, target, att_type, pubs, r):
+        msgs = []
+        self.notes.add_target(target, att_type)
+        msgs.append(self.graft_peer(target, r))
+        if att_type == AttackType.UNDERCOVER:
+            for pub in pubs:
+                if target != pub:
+                    msgs.append(self.graft_peer(pub, r))
+        return msgs
+
     def run_scores_background(self, curr_r):
         for u, counters in self.scores.items():
             counters.run_background(curr_r)
             #  if (self.id == 0 and u == 99):
                 #  print('0 update score for', u, 'new score:', counters.get_score())
 
-    def adv_process_msgs(self, r, target, favor_list, attack):
-        #  self.schedule_heartbeat(r)
+    def process_msgs(self, r):
+        # self.schedule_heartbeat(r)
         self.run_scores_background(r)
         self.round_trans_ids.clear()
 
         while len(self.in_msgs) > 0:
             msg = self.in_msgs.pop(0)
             mtype, _, src, dst, _, _, _ = msg
-            if mtype == MessageType.HEARTBEAT:
-                continue
-
+            
             assert self.id == dst
             if mtype == MessageType.GRAFT:
                 self.proc_GRAFT(msg, r)
             elif mtype == MessageType.PRUNE:
+                # print(self.id, 'recv PRUNE from', src)
                 self.proc_PRUNE(msg)
             elif mtype == MessageType.LEAVE:
                 self.proc_LEAVE(msg) 
@@ -89,11 +101,22 @@ class Sybil:
             elif mtype == MessageType.HEARTBEAT:
                 self.proc_Heartbeat(msg, r)
             elif mtype == MessageType.TRANS:
-                self.adv_proc_TRANS(msg, r, target, favor_list, attack)
+                if self.id == 90:
+                    print(self.id, 'recv TRANS from', src)
+                self.proc_TRANS(msg)
             else:
                 self.scores[src].update_p4()
+
+        # for t in self.notes.targets:
+            # # print('sybil', self.id, 'has target', t)
+            # if t not in self.mesh:
+                # if self.id == 90:
+                    # print('sybil', self.id, 'try reconnect', t)
+                # msg = self.graft_peer(t, r)
+                # self.out_msgs.append(msg)
+
         
-    def adv_proc_TRANS(self, msg, r, target, favor_list, attack):
+    def proc_TRANS(self, msg):
         _, mid, src, _, _, _, trans_id = msg
         self.scores[src].add_msg_delivery()
         # if not seen msg before
@@ -103,21 +126,32 @@ class Sybil:
             self.round_trans_ids.add(trans_id)
             # push it to other peers in mesh if not encountered
             if trans_id not in self.trans_set:
-                # print(self.id, self.mesh)
                 for peer in self.mesh:
-                    if (attack == 'eclipse'):
-                        if peer in favor_list:
+                    if peer == src:
+                        continue
+
+                    if peer in self.notes.targets:
+                        attack = self.notes.targets[peer]
+                        if attack == AttackType.UNDERCOVER:
                             msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
-                            self.out_msgs.append(msg)
-                        elif peer != src and peer < 50:
-                            # print("send long msg to peer", peer)
-                            msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN*100, trans_id)
-                            self.out_msgs.append(msg)
+                            print(self.id, 'undercover forward msg to', peer)
+                            self.out_msgs.insert(0, msg)
+                        elif attack == AttackType.MSG_BOMB:
+                            print(self.id, 'bomb target', peer)
+                            for _ in range(BOMB_FACTOR):
+                                msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                                self.out_msgs.append(msg)
+                        else:
+                            print('Error. Unknown attack type', attack)
+                            sys.exit(0)
+                    # unspecified attack for that peer
                     else:
-                        if peer != src:
-                            msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
-                            self.out_msgs.append(msg)
+                        msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                        print(self.id, 'forward msg to', peer)
+                        self.out_msgs.append(msg)
                 self.trans_set.add(trans_id)
+            else:
+                print(self.id, 'already had msg')
 
     def gen_msg(self, mtype, peer, msg_len, payload):
         msg = Message(mtype, self.seqno, self.id, peer, self.role, msg_len, payload)
@@ -143,13 +177,12 @@ class Sybil:
     def graft_peer(self, peer, r):
         msg = self.gen_msg(MessageType.GRAFT, peer, CTRL_MSG_LEN, None)
         self.mesh[peer] = Direction.Outgoing
-        self.scores[peer].in_mesh = True
         if peer not in self.scores:
             self.scores[peer] = PeerScoreCounter()
-        #  if (self.id == 0):
-            #  print('Round {}: 0 graft {}, new score is {}'.format(r, peer, self.scores[peer].get_score()))
+        self.scores[peer].in_mesh = True
         self.scores[peer].init_r(r)
-        self.out_msgs.append(msg)
+        
+        return msg
 
     def setup_peer(self, peer, direction, r):
         self.mesh[peer] = direction 

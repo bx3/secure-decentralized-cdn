@@ -2,6 +2,7 @@ from config import *
 from collections import namedtuple
 import math
 import sys
+import random
 from messages import Message
 from messages import MessageType
 from generate_network import parse_nodes 
@@ -312,7 +313,7 @@ class Network:
 
         num_msg = len(self.controller.msg_uplink[u])
         if num_msg > UPLINK_CONGEST_THRESH:
-            # print('Warning. node', u, 'Hit UPLINK_CONGEST_THRESH with num msg', num_msg)
+            print('Warning. node', u, 'Hit UPLINK_CONGEST_THRESH with num msg', num_msg)
             return True
         return False
    
@@ -341,10 +342,31 @@ class Network:
             # self.enqueue_msg(msg, r, dst)
 
     # return dict with key be dst, value is delivered msgs
-    def update(self):
-        msgs = self.controller.drain_links()
+    def update(self, adv_priority=True):
+        dst_msgs = self.controller.drain_links()
+        
+        if adv_priority:
+            all_links = list(dst_msgs.keys())
+            for dst in all_links:
+                msgs = dst_msgs[dst]
+                h_msg = []
+                a_msg = []
+                for msg in msgs:
+                    _, _, src, dst, adv, length, _ = msg
+                    if adv == NodeType.SYBIL:
+                        a_msg.append(msg)
+                    else:
+                        h_msg.append(msg)
+
+                # random.shuffle(a_msg)
+                dst_msgs[dst] = a_msg + h_msg
+        else:
+            all_links = list( dst_msgs.keys())
+            for dst in all_links:
+                random.shuffle(dst_msgs[dst])
+
         self.controller.clean_links()
-        return msgs
+        return dst_msgs
 
     # TODO transmission and propogation delay
     # def get_delay_to_msg(self, src, dst, length, curr_r):
@@ -357,11 +379,11 @@ class Network:
         # return arrive_r
 
     # every heartbeat msg contains unique seqno
-    def gen_heartbeat_msg(self, dst):
-        mid = (self.id, self.seqno)
-        msg = Message(MessageType.HEARTBEAT, mid, self.id, dst, False, CTRL_MSG_LEN, None)
-        self.seqno += 1
-        return msg
+    # def gen_heartbeat_msg(self, dst):
+        # mid = (self.id, self.seqno)
+        # msg = Message(MessageType.HEARTBEAT, mid, self.id, dst, False, CTRL_MSG_LEN, None)
+        # self.seqno += 1
+        # return msg
 
     def take_snapshot(self):
         links_shot = {}

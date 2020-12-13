@@ -40,24 +40,34 @@ class Experiment:
     # # # # # # # # 
     #  main loop  #
     # # # # # # # # 
-    def start(self, epoch, start_round=0, attack_strategy='None', attack_target=[]):
+    def start(self, epoch, start_round=0, attack_strategy='None', targets=[]):
         for r in range(start_round, start_round+epoch):
-            # network store messages from honest nodes
-            self.push_honest_msgs(r)
+            # debug
+            if r % HEARTBEAT == 0:
+                print("****\t\theartbeat generated", r, HEARTBEAT)
+
             # start attack
-            if attack_strategy == 'eclipse' and len(attack_target) >0:
-                self.attack(r, attack_target)
+            self.attack(r, self.network, targets)
+
+            # network store messages from honest nodes
+            self.push_sybil_msgs(r)
+            self.push_honest_msgs(r)
+            
             # network deliver msgs
             self.deliver_msgs(r)
             # honest node retrieve msgs 
             self.honest_nodes_handle_msgs(r)
-            if attack_strategy != 'flash':
-                # sybil node retrieve msgs
-                self.sybil_nodes_handle_msgs(r, attack_strategy)
+            self.sybil_nodes_handle_msgs(r)
             # take snapshot
             self.take_snapshot(r)
             #print("round", r, "finish using ", time.time()-start)
         return self.snapshots
+
+    def push_sybil_msgs(self, r):
+        for u, node in self.sybils.items():
+            # if network has too many messages, stop
+            msgs = node.send_msgs() 
+            self.network.push_msgs(msgs, r)
 
     # honest nodes push msg to network
     def push_honest_msgs(self, curr_r):
@@ -67,17 +77,16 @@ class Experiment:
                 msgs = node.send_msgs() 
                 self.network.push_msgs(msgs, curr_r)
 
-    def attack(self, r, network, attack_target=1):
-        # chosen attack strategy to generate new messgae and arrange network 
-        # if (not self.adversary.has_target()) and len(self.snapshots) > 0:
-            # self.adversary.find_eclipse_publisher_target(r, self.snapshots)
-        self.adversary.target = attack_target # some hack
-        adv_msgs = self.adversary.eclipse_target(r, self.snapshots, network) # only possess snapshots
+    def attack(self, r, network, targets):
+        self.adversary.add_targets(targets) # some hack
+        adv_msgs = []
+        if r > 0: 
+            adv_msgs = self.adversary.eclipse_target(r, self.snapshots, network) # only possess snapshots
         self.network.push_msgs(adv_msgs, r)
                  
     def deliver_msgs(self, curr_r):
         num_delivered_msg =  0
-        dst_msgs = self.network.update()
+        dst_msgs = self.network.update(True)
         for dst, msgs in dst_msgs.items():
             # honest 
             if dst in self.nodes:
@@ -92,15 +101,15 @@ class Experiment:
             if node.role != NodeType.SYBIL:
                 node.process_msgs(curr_r)
             else:
-                node.adv_process_msgs(curr_r)
+                node.process_msgs(curr_r)
     
     def honest_nodes_handle_msgs(self, curr_r):
         for u, node in self.nodes.items():
             if node.role != NodeType.SYBIL:
                 node.process_msgs(curr_r)
 
-    def sybil_nodes_handle_msgs(self, curr_r, attack):
-        self.adversary.handle_msgs(curr_r, attack)
+    def sybil_nodes_handle_msgs(self, curr_r):
+        self.adversary.handle_msgs(curr_r)
 
 
     def take_snapshot(self, r):
@@ -144,10 +153,11 @@ class Experiment:
                 print('Error. config file duplicate id')
                 sys.exit(0)
 
+    # modified sybils node does not get in mesh, is system is warm
     def setup_mesh(self):
-        self.all_nodes = {**(self.nodes), **(self.sybils)}
+        # self.all_nodes = {**(self.nodes), **(self.sybils)}
         mesh = {} # key is node, value is mesh nodes
-        for u, node in self.all_nodes.items():
+        for u, node in self.nodes.items():
             num_out = int(OVERLAY_D / 2)
             known_peers = node.peers.copy()
             known_peers = list(known_peers)
@@ -155,7 +165,7 @@ class Experiment:
             chosen = known_peers[:num_out]
             for v in chosen:
                 node.setup_peer(v, Direction.Outgoing, 0)
-                self.all_nodes[v].setup_peer(u, Direction.Incoming, 0) 
+                self.nodes[v].setup_peer(u, Direction.Incoming, 0) 
 
 
 # for u, node in self.nodes.items():

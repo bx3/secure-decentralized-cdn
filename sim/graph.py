@@ -85,6 +85,8 @@ class Node:
             mtype, _, src, dst, _, _, payload = msg
             assert self.id == dst
             if mtype == MessageType.GRAFT:
+                # if self.id == 0:
+                    # print(self.id, 'recv GRAFT from', src)
                 self.proc_GRAFT(msg, r)
             elif mtype == MessageType.PRUNE:
                 # print(self.id, 'recv PRUNE from', src)
@@ -102,8 +104,9 @@ class Node:
                     self.last_heartbeat = r
                     self.proc_Heartbeat(msg, r)
             elif mtype == MessageType.TRANS:
-                    # print(self.id, 'recv trans', payload, 'from', src, 'mesh', self.mesh)
-                    self.proc_TRANS(msg, r)
+                # if self.id == 0 or self.id == 1 or self.id == 68:
+                    # print(self.id, 'recv trans', payload, 'from', src)
+                self.proc_TRANS(msg, r)
             else:
                 self.scores[src].update_p4() # Invalid msgs
         
@@ -118,9 +121,9 @@ class Node:
                 self.gen_heartbeat(r)
 
     def gen_heartbeat(self, r):
-        for peer in self.peers:
-            msg = self.gen_msg(MessageType.HEARTBEAT, peer, CTRL_MSG_LEN, None)
-            self.out_msgs.append(msg)
+        # for peer in self.peers:
+            # msg = self.gen_msg(MessageType.HEARTBEAT, peer, CTRL_MSG_LEN, None)
+            # self.out_msgs.append(msg)
         self.proc_Heartbeat(None, r)
         self.last_heartbeat = r
 
@@ -134,7 +137,7 @@ class Node:
 
         if random.random() < self.gen_prob:
             self.gen_trans_num += 1
-            # print('generate a message', self.id, r)
+            print('*****', self.id, 'gen a message *******')
             for peer in self.mesh:
                 trans_id = TransId(self.id, self.gen_trans_num)
                 msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
@@ -143,7 +146,14 @@ class Node:
 
     def proc_TRANS(self, msg, r):
         _, mid, src, _, _, _, trans_id = msg
+        # print('node', self.id, src)
+        # print(self.mesh)
+        # in case the peer has not been accepted by the mesh, but relay msg
+        if src not in self.mesh:
+            return 
+
         self.scores[src].add_msg_delivery()
+
         # if not seen msg before
         if mid not in self.msg_ids:
             self.msg_ids.add(mid)
@@ -180,6 +190,8 @@ class Node:
 
     def prune_peer(self, peer):
         # add backoff counter
+        # if self.id == 0:
+        
         msg = self.gen_msg(MessageType.PRUNE, peer, CTRL_MSG_LEN, None)
         self.mesh.pop(peer, None)
         self.scores[peer].in_mesh = False
@@ -213,8 +225,7 @@ class Node:
             counters = self.scores[u]
             if counters.get_score() < 0:
                 counters.update_p3b(-counters.get_score())
-                #  if (self.id == 0):
-                    #  print('Round {}: 0 prune {}, new score is {}'.format(r, u, counters.get_score()))
+                print(self.id, "prune a peer", peer, 'due to neg score')
                 self.prune_peer(u)
 
         # add peers if needed
@@ -229,6 +240,7 @@ class Node:
 
         # prune peers if needed
         if len(self.mesh) > OVERLAY_DHI:
+            print(self.id, 'mesh is high', len(self.mesh))
             # get pos score peers
             mesh_peers_scores = self.get_pos_score_mesh_peers()
             mesh_peers_scores.sort(key=lambda tup: tup[1], reverse=True)
@@ -257,6 +269,7 @@ class Node:
             remove_peers = mesh_peers[self.D:]
             for peer in remove_peers:
                 self.prune_peer(peer)
+                print(self.id, "prune a peer", peer, 'due to high mesh')
 
         # even there is enough mesh, check if there are enough outgoing mesh
         if len(self.mesh) > OVERLAY_DLO:
@@ -325,6 +338,7 @@ class Node:
         if src in self.scores:
             counters = self.scores[src]
             if counters.get_score() < 0:
+                # print('reject peer', src, 'due to neg score')
                 return True
 
         is_outbound = False
@@ -332,7 +346,8 @@ class Node:
             if src == peer and direction == Direction.Outgoing:
                 is_outbound = True
         # check existing number peer in the mesh
-        if len(self.mesh) > OVERLAY_DHI and (not is_outbound):
+        if len(self.mesh) >= OVERLAY_DHI and (not is_outbound):
+            # print('reject peer', src, 'due to mesh limit')
             return True
 
         msg = self.gen_msg(MessageType.PRUNE, src, CTRL_MSG_LEN, None)
@@ -347,12 +362,12 @@ class Node:
             # print(self.id, 'refuse a GRAFT from', src)
             return 
 
+        # print(self.id, 'accept a GRAFT from', src)
         self.mesh[src] = Direction.Incoming
         if src not in self.scores:
             self.scores[src] = PeerScoreCounter()
         self.scores[src].in_mesh = True
         self.peers.add(src)
-        self.out_msgs.append(msg)
 
     def proc_LEAVE(self, msg):
         pass

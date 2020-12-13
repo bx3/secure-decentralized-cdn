@@ -119,7 +119,7 @@ elif cmd == "term":
     snapshots = []
     history_targets = set()
     while True:
-        rounds = 20 # input("Enter simulation rounds, such as '20'. Type 'exit' to exit: ")
+        rounds = HEARTBEAT/4 # input("Enter simulation rounds, such as '20'. Type 'exit' to exit: ")
         if rounds == 'exit':
             break
 
@@ -132,7 +132,7 @@ elif cmd == "term":
         # analyzer.visualize_network(snapshots[-1].nodes, draw_nodes='all')
         total_rounds += int(rounds)
 
-        os.system('clear')
+        # os.system('clear')
         if len(targets) >0:
             analyzer.print_target_info(snapshots[-1], targets)
             analyzer.print_sybils(snapshots[-1])
