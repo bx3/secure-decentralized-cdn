@@ -5,6 +5,7 @@ import sys
 import random
 from messages import Message
 from messages import MessageType
+from messages import AdvRate
 from generate_network import parse_nodes 
 from generate_network import NetBandwidth
 
@@ -34,7 +35,7 @@ class LinkState:
             self.down_remain
             )
 
-    def set_froze_count(self, count):
+    def set_freeze_count(self, count):
         self.frozen = count
 
 
@@ -128,7 +129,7 @@ class Controller:
         self.msg_downlink = {} # same as above
 
     def feed_link(self, msg, up_bd_lim, down_bd_lim):
-        mtype, mid, src, dst, adv, length, payload = msg
+        mtype, mid, src, dst, _, length, payload = msg
         pair = (src, dst)
         if pair not in self.links:
             self.links[pair] = LinkState(up_bd_lim, down_bd_lim, msg)
@@ -293,8 +294,8 @@ class Network:
     # used by adversary to delay message
     def break_link(self, pair, frozen_round):
         if pair in self.controller.links:
-            link = self.controller.links[arrow]
-            link.set_froze_count(frozen_round)
+            link = self.controller.links[pair]
+            link.set_freeze_count(frozen_round)
 
     def load_network(self, setup_json):
         nodes = parse_nodes(setup_json)
@@ -353,8 +354,10 @@ class Network:
                 a_msg = []
                 for msg in msgs:
                     _, _, src, dst, adv, length, _ = msg
-                    if adv == NodeType.SYBIL:
+                    if adv == AdvRate.SybilFlat:
                         a_msg.append(msg)
+                    elif adv == AdvRate.SybilPriority:
+                        a_msg.insert(0, msg)
                     else:
                         h_msg.append(msg)
 

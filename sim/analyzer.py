@@ -503,6 +503,16 @@ def visualize_network(nodes, draw_nodes='all'):
 
    
 def print_node(t, node, sybils, nodes):
+    is_eclipsed = True 
+    for peer in node.mesh:
+        if peer not in sybils:
+            is_eclipsed = False 
+
+    if not is_eclipsed:
+        print("\t\tTargeted")
+    else:
+        print("\t\tEclipsed")
+
     print('id         ', t)
     print('num mesh   ', len(node.mesh))
     print('role       ', node.role)
@@ -534,16 +544,50 @@ def print_target_info(snapshot, targets):
     nodes = snapshot.nodes
     sybils = snapshot.sybils
     for t in targets:
-        print("\t\tTargeted")
         print_node(t, nodes[t], sybils, nodes)
 
 
 def print_sybil(u, sybil):
-    peers = list(sybil.mesh.keys())
-    print("id {sybil_id}, peers {peers}".format(sybil_id=u, peers=peers))
+    print("id {sybil_id}, role {role}, s-mesh {s_mesh}, attempts {attempts}, channels {channels}".format(
+        sybil_id=u, 
+        role=sybil.attack_method, 
+        s_mesh=sybil.secured_mesh, 
+        attempts=sybil.attempts, 
+        channels=sybil.channels))
 
 def print_sybils(snapshot):
     sybils = snapshot.sybils
     print("\t\tSybils")
     for u, sybil in sybils.items():
         print_sybil(u, sybil)
+
+def get_eclipsed_target(snapshots, targets):
+    hist = []
+    for snapshot in snapshots:
+        eclipsed = set()
+        nodes = snapshot.nodes
+        for t in targets:
+            is_eclipsed = True
+            for peer in nodes[t].mesh:
+                if peer not in snapshot.sybils:
+                    is_eclipsed = False
+            if is_eclipsed:
+                eclipsed.add(t)
+        hist.append(eclipsed)
+    return hist
+
+def write_eclipse_list(data, filename, dirname):
+    filepath = dirname + '/' + filename
+    with open(filepath, 'w') as w:
+        for i, j in enumerate(data):
+            w.write(str(i) + " " + str(len(j)) + "\n ")
+
+def plot_eclipse_list(data, filename, dirname, num_targets):
+    num_eclipsed_list = [len(i) for i in data]
+    fig, ax = plt.subplots(1)
+    filepath = dirname + '/' + filename
+    ax.plot(num_eclipsed_list)
+    title_txt = 'number eclipsed out of ' + str(num_targets) + ' with ' + filename
+    ax.title.set_text(title_txt)  
+    plt.show()
+    plt.savefig(filepath)

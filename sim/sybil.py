@@ -12,7 +12,11 @@ State = namedtuple('State', [
     'role', 
     'conn', 
     'mesh', 
+    'secured_mesh',
+    'channels',
+    'attack_method',
     'peers', 
+    'attempts',
     'out_msgs', 
     'scores', 
     'trans_set', 
@@ -31,6 +35,9 @@ class Sybil:
         self.role = role
         self.conn = set() # lazy push
         self.mesh = {} # mesh push
+        
+        self.secured_mesh = {} # key is peer, value is if secured
+        self.trans_hist = {} # key is round, each element is a list of trans recv at that round
 
         self.peers = set(peers) # known peers
         self.out_msgs = [] # msg to push in the next round
@@ -101,11 +108,31 @@ class Sybil:
             elif mtype == MessageType.HEARTBEAT:
                 self.proc_Heartbeat(msg, r)
             elif mtype == MessageType.TRANS:
-                if self.id == 90:
-                    print(self.id, 'recv TRANS from', src)
-                self.proc_TRANS(msg)
+                self.proc_TRANS(msg, r)
             else:
                 self.scores[src].update_p4()
+
+        if r not in self.trans_hist:
+            self.trans_hist[r] = []
+        
+        # maintainence and doing bomb things
+        if self.notes.type == AttackType.MSG_BOMB:
+            while len(self.notes.bomb_request) > 0:
+                req = self.notes.bomb_request.pop(0)
+                print(self.id, 'bombing', req.node)
+                # for _ in range(BOMB_FACTOR):
+                msg = self.gen_msg(MessageType.TRANS, req.node, TRANS_MSG_LEN, trans_id)
+                self.out_msgs.append(msg)
+        elif self.notes.type == AttackType.UNDERCOVER:
+            # in case need to graft
+            for t in self.notes.targets:
+                if (t not in self.secured_mesh) or (not self.secured_mesh[t]):
+                    self.send_graft_peer(t, r)
+                    # print(self.id, 'send graft to', t)
+                    self.secured_mesh[t] = False
+        else:
+            print('Error. unknown adv role')
+            sys.exit(0)
 
         # for t in self.notes.targets:
             # # print('sybil', self.id, 'has target', t)
@@ -115,12 +142,37 @@ class Sybil:
                 # msg = self.graft_peer(t, r)
                 # self.out_msgs.append(msg)
 
-        
-    def proc_TRANS(self, msg):
+    def forward_msg(self, msg, peer, trans_id):
         _, mid, src, _, _, _, trans_id = msg
+        if peer in self.notes.targets:
+            attack = self.notes.targets[peer]
+            msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+            # print(self.id, 'undercover forward msg to', peer)
+            self.out_msgs.insert(0, msg)
+        # unspecified attack for that peer
+        else:
+            msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+            # print(self.id, 'forward msg to', peer)
+            self.out_msgs.append(msg)
+
+        
+    def proc_TRANS(self, msg, r):
+        _, mid, src, _, adv_rate, _, trans_id = msg
+        if adv_rate == AdvRate.SybilInternal:
+            for peer in self.mesh:
+                self.forward_msg(msg, peer, trans_id)
+            return 
+
         self.scores[src].add_msg_delivery()
+        if src in self.notes.targets:
+            self.secured_mesh[src] = True
         # if not seen msg before
         if mid not in self.msg_ids:
+            if r not in self.trans_hist:
+                self.trans_hist[r] = [msg]
+            else:
+                self.trans_hist[r].append(msg)
+            
             self.msg_ids.add(mid)
             self.scores[src].update_p2()
             self.round_trans_ids.add(trans_id)
@@ -129,32 +181,18 @@ class Sybil:
                 for peer in self.mesh:
                     if peer == src:
                         continue
-
-                    if peer in self.notes.targets:
-                        attack = self.notes.targets[peer]
-                        if attack == AttackType.UNDERCOVER:
-                            msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
-                            print(self.id, 'undercover forward msg to', peer)
-                            self.out_msgs.insert(0, msg)
-                        elif attack == AttackType.MSG_BOMB:
-                            print(self.id, 'bomb target', peer)
-                            for _ in range(BOMB_FACTOR):
-                                msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
-                                self.out_msgs.append(msg)
-                        else:
-                            print('Error. Unknown attack type', attack)
-                            sys.exit(0)
-                    # unspecified attack for that peer
-                    else:
-                        msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
-                        print(self.id, 'forward msg to', peer)
-                        self.out_msgs.append(msg)
+                    self.forward_msg(msg, peer, trans_id)
                 self.trans_set.add(trans_id)
-            else:
-                print(self.id, 'already had msg')
+            # else:
+                # print(self.id, 'already had msg')
 
     def gen_msg(self, mtype, peer, msg_len, payload):
-        msg = Message(mtype, self.seqno, self.id, peer, self.role, msg_len, payload)
+        adv_msg = AdvRate.SybilFlat
+        for c in self.notes.channels:
+            if peer == c.node:
+                adv_msg = AdvRate.SybilPriority
+
+        msg = Message(mtype, self.seqno, self.id, peer, adv_msg, msg_len, payload)
         self.seqno += 1
         return msg
 
@@ -183,6 +221,10 @@ class Sybil:
         self.scores[peer].init_r(r)
         
         return msg
+
+    def send_graft_peer(self, peer, r):
+        msg = self.graft_peer(peer, r)
+        self.out_msgs.append(msg)
 
     def setup_peer(self, peer, direction, r):
         self.mesh[peer] = direction 
@@ -250,11 +292,27 @@ class Sybil:
             if direction == Direction.Outgoing:
                 out_conn.append(peer)
 
+        secured_mesh = []
+        for k, v in self.secured_mesh.items():
+            if v:
+                secured_mesh.append(k)
+        attempts = []
+        for t in self.notes.targets:
+            if (t not in self.secured_mesh) or (not self.secured_mesh[t]):
+                attempts.append(t)
+
+        channels = []
+        for c in self.notes.channels:
+            channels.append(c.node)
         return State(
                 self.role, 
                 self.conn.copy(), 
                 self.mesh.copy(), 
+                secured_mesh,
+                channels,
+                self.notes.type.value,
                 self.peers.copy(), 
+                attempts,
                 self.out_msgs.copy(), 
                 scores_value, 
                 self.trans_set.copy(), 

@@ -15,6 +15,12 @@ class Direction(Enum):
     Incoming = 0
     Outgoing = 1
 
+class AdvRate(Enum):
+    NotSybil = 0
+    SybilPriority = 1
+    SybilFlat = 2
+    SybilInternal = 3
+
 # other MessageType for Flood ...
 # mtype, mid, src, dst, adv, len, payload = msg
 Message = namedtuple('Message', ['mType', 'id', 'src', 'dst', 'adv', 'length', 'payload'])

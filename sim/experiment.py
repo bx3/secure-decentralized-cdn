@@ -41,27 +41,35 @@ class Experiment:
     #  main loop  #
     # # # # # # # # 
     def start(self, epoch, start_round=0, attack_strategy='None', targets=[]):
+        curr_shots = [] 
         for r in range(start_round, start_round+epoch):
             # debug
             if r % HEARTBEAT == 0:
                 print("****\t\theartbeat generated", r, HEARTBEAT)
 
             # start attack
-            self.attack(r, self.network, targets)
+            self.attack_management(r, self.network, targets)
 
             # network store messages from honest nodes
             self.push_sybil_msgs(r)
             self.push_honest_msgs(r)
+
+            self.attack_freeze_network(r)
             
             # network deliver msgs
             self.deliver_msgs(r)
             # honest node retrieve msgs 
             self.honest_nodes_handle_msgs(r)
             self.sybil_nodes_handle_msgs(r)
+
+            # assume sybils have powerful internal network, node processing speed
+            self.sybil_use_fast_internet(r) 
+            # self.sybil_nodes_handle_msgs(r)
+
             # take snapshot
-            self.take_snapshot(r)
+            curr_shots.append(self.take_snapshot(r))
             #print("round", r, "finish using ", time.time()-start)
-        return self.snapshots
+        return curr_shots
 
     def push_sybil_msgs(self, r):
         for u, node in self.sybils.items():
@@ -77,12 +85,15 @@ class Experiment:
                 msgs = node.send_msgs() 
                 self.network.push_msgs(msgs, curr_r)
 
-    def attack(self, r, network, targets):
+    def attack_management(self, r, network, targets):
         self.adversary.add_targets(targets) # some hack
         adv_msgs = []
         if r > 0: 
-            adv_msgs = self.adversary.eclipse_target(r, self.snapshots, network) # only possess snapshots
+            adv_msgs = self.adversary.eclipse_target(r, self.snapshots, self.network) 
         self.network.push_msgs(adv_msgs, r)
+
+    def attack_freeze_network(self, r):
+        self.adversary.handle_freeze_requests(r, self.nodes, self.network)
                  
     def deliver_msgs(self, curr_r):
         num_delivered_msg =  0
@@ -111,6 +122,9 @@ class Experiment:
     def sybil_nodes_handle_msgs(self, curr_r):
         self.adversary.handle_msgs(curr_r)
 
+    def sybil_use_fast_internet(self, curr_r):
+        self.adversary.sybil_nodes_redistribute_msgs(curr_r)
+
 
     def take_snapshot(self, r):
         snapshot = Snapshot()
@@ -127,6 +141,7 @@ class Experiment:
         snapshot.network = self.network.take_snapshot()
         
         self.snapshots.append(snapshot)
+        return snapshot
 
     def load_nodes(self, setup_file):
         nodes = gn.parse_nodes(setup_file)
@@ -157,6 +172,7 @@ class Experiment:
     def setup_mesh(self):
         # self.all_nodes = {**(self.nodes), **(self.sybils)}
         mesh = {} # key is node, value is mesh nodes
+        # num_conn_1 = 0
         for u, node in self.nodes.items():
             num_out = int(OVERLAY_D / 2)
             known_peers = node.peers.copy()
@@ -164,8 +180,12 @@ class Experiment:
             random.shuffle(known_peers)
             chosen = known_peers[:num_out]
             for v in chosen:
+                # if v == 1:
+                    # num_conn_1 += 1
                 node.setup_peer(v, Direction.Outgoing, 0)
                 self.nodes[v].setup_peer(u, Direction.Incoming, 0) 
+
+        # print('num_conn_1', num_conn_1)
 
 
 # for u, node in self.nodes.items():

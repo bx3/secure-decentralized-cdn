@@ -176,7 +176,7 @@ class Node:
             self.scores[p] = PeerScoreCounter()
 
     def gen_msg(self, mtype, peer, msg_len, payload):
-        msg = Message(mtype, self.seqno, self.id, peer, self.role, msg_len, payload)
+        msg = Message(mtype, self.seqno, self.id, peer, AdvRate.NotSybil, msg_len, payload)
         self.seqno += 1
         return msg
 
@@ -225,7 +225,7 @@ class Node:
             counters = self.scores[u]
             if counters.get_score() < 0:
                 counters.update_p3b(-counters.get_score())
-                print(self.id, "prune a peer", peer, 'due to neg score')
+                # print(self.id, "prune a peer", u, 'due to neg score')
                 self.prune_peer(u)
 
         # add peers if needed
@@ -240,7 +240,7 @@ class Node:
 
         # prune peers if needed
         if len(self.mesh) > OVERLAY_DHI:
-            print(self.id, 'mesh is high', len(self.mesh))
+            # print(self.id, 'mesh is high', len(self.mesh))
             # get pos score peers
             mesh_peers_scores = self.get_pos_score_mesh_peers()
             mesh_peers_scores.sort(key=lambda tup: tup[1], reverse=True)
@@ -269,7 +269,7 @@ class Node:
             remove_peers = mesh_peers[self.D:]
             for peer in remove_peers:
                 self.prune_peer(peer)
-                print(self.id, "prune a peer", peer, 'due to high mesh')
+                # print(self.id, "prune a peer", peer, 'due to high mesh')
 
         # even there is enough mesh, check if there are enough outgoing mesh
         if len(self.mesh) > OVERLAY_DLO:
@@ -331,14 +331,14 @@ class Node:
     # return true if it won't pass
     def filter_graft(self, msg, r):
         _, _, src, _, _, _, _ = msg
-        # already in mesh
-        if src in self.mesh:
-            return True
+        
         # check score
         if src in self.scores:
             counters = self.scores[src]
             if counters.get_score() < 0:
-                # print('reject peer', src, 'due to neg score')
+                # print(self.id, 'reject peer', src, 'due to neg score')
+                msg = self.gen_msg(MessageType.PRUNE, src, CTRL_MSG_LEN, None)
+                self.out_msgs.append(msg)
                 return True
 
         is_outbound = False
@@ -347,19 +347,21 @@ class Node:
                 is_outbound = True
         # check existing number peer in the mesh
         if len(self.mesh) >= OVERLAY_DHI and (not is_outbound):
-            # print('reject peer', src, 'due to mesh limit')
+            msg = self.gen_msg(MessageType.PRUNE, src, CTRL_MSG_LEN, None)
+            self.out_msgs.append(msg)
+            # print(self.id, 'reject peer', src, 'due to mesh limit')
             return True
-
-        msg = self.gen_msg(MessageType.PRUNE, src, CTRL_MSG_LEN, None)
-        self.out_msgs.append(msg)
 
         return False
 
     # the other peer has added me to its mesh, I will add it too 
     def proc_GRAFT(self, msg, r):
         _, _, src, _, _, _, _ = msg
+        if src in self.mesh:
+            return
+
         if self.filter_graft(msg, r):
-            # print(self.id, 'refuse a GRAFT from', src)
+            # send prune msg
             return 
 
         # print(self.id, 'accept a GRAFT from', src)

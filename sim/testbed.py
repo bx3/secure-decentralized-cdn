@@ -139,6 +139,43 @@ elif cmd == "term":
         else:
             analyzer.print_target_info(snapshots[-1], history_targets)
             analyzer.print_sybils(snapshots[-1])
+
+        # analyzer.print_sybil(91, snapshots[-1].sybils[91]) debug
+        # analyzer.print_node(1, snapshots[-1].nodes[1], snapshots[-1].sybils, snapshots[-1].nodes) 
+elif cmd == "plot":
+    setup = sys.argv[2]
+    filename = sys.argv[3]
+    targets_str = sys.argv[4:]
+    targets =[int(i) for i in targets_str]
+
+    heartbeat = HEARTBEAT
+    gossipsub = Experiment(setup, heartbeat)
+
+    if not os.path.isdir('data'):
+        os.mkdir('data')
+
+    dirname = 'data'
+    filepath = dirname + '/' + filename
+
+    total_rounds = 0
+    snapshots = []
+    eclipsed = set() 
+    eclipsed_num_hist = []
+
+    while len(eclipsed) < len(targets) and total_rounds<2000:
+        new_shots = gossipsub.start(1, total_rounds, 'eclipse', targets)
+        eclipsed_list = analyzer.get_eclipsed_target(new_shots, targets)
+        snapshots = snapshots + new_shots
+        total_rounds += 1 
+        eclipsed_num_hist += eclipsed_list
+        eclipsed = eclipsed_num_hist[-1]
+        analyzer.print_target_info(snapshots[-1], targets)
+    print(total_rounds)
+
+    analyzer.write_eclipse_list(eclipsed_num_hist, filename, dirname)
+    analyzer.plot_eclipse_list(eclipsed_num_hist, filename, dirname, len(targets))
+    # analyzer.print_target_info(snapshots[-1], targets)
+    # analyzer.print_sybils(snapshots[-1])
 else:
     print('Require a valid subcommand', cmd)
 
