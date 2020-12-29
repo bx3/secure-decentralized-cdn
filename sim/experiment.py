@@ -44,8 +44,8 @@ class Experiment:
         curr_shots = [] 
         for r in range(start_round, start_round+epoch):
             # debug
-            if r % HEARTBEAT == 0:
-                print("****\t\theartbeat generated", r, HEARTBEAT)
+            # if r % HEARTBEAT == 0:
+                # print("****\t\theartbeat generated", r, HEARTBEAT)
 
             # start attack
             self.attack_management(r, self.network, targets)
@@ -54,7 +54,8 @@ class Experiment:
             self.push_sybil_msgs(r)
             self.push_honest_msgs(r)
 
-            self.attack_freeze_network(r)
+            if r > 0:
+                self.attack_freeze_network(r)
             
             # network deliver msgs
             self.deliver_msgs(r)
@@ -81,9 +82,9 @@ class Experiment:
     def push_honest_msgs(self, curr_r):
         for u, node in self.nodes.items():
             # if network has too many messages, stop
-            if not self.network.is_uplink_congested(u):
-                msgs = node.send_msgs() 
-                self.network.push_msgs(msgs, curr_r)
+            # if not self.network.is_uplink_congested(u):
+            msgs = node.send_msgs() 
+            self.network.push_msgs(msgs, curr_r)
 
     def attack_management(self, r, network, targets):
         self.adversary.add_targets(targets) # some hack
@@ -93,7 +94,8 @@ class Experiment:
         self.network.push_msgs(adv_msgs, r)
 
     def attack_freeze_network(self, r):
-        self.adversary.handle_freeze_requests(r, self.nodes, self.network)
+        if r > 0:
+            self.adversary.handle_freeze_requests(r, self.snapshots[-1], self.network)
                  
     def deliver_msgs(self, curr_r):
         num_delivered_msg =  0

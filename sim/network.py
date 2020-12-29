@@ -9,7 +9,7 @@ from messages import AdvRate
 from generate_network import parse_nodes 
 from generate_network import NetBandwidth
 
-NetworkState = namedtuple('NetworkState', ['links', 'uplinks', 'downlinks'])
+NetworkState = namedtuple('NetworkState', ['links', 'uplinks', 'downlinks', 'freeze_count'])
 LinkSnapshot = namedtuple('LinkSnapshot', ['num_msg', 'num_trans', 'finished_trans', 'up_remains', 'down_remains'])
 
 # direcdtion sensitive
@@ -35,8 +35,8 @@ class LinkState:
             self.down_remain
             )
 
-    def set_freeze_count(self, count):
-        self.frozen = count
+    def add_freeze_count(self, count):
+        self.frozen += count
 
 
     def get_num_msg(self):
@@ -290,12 +290,15 @@ class Network:
         self.controller = Controller()
         self.netband = {}
         self.load_network(setup_json)
+        self.freeze_count = 0
+        self.num_push_msg = 0
 
     # used by adversary to delay message
     def break_link(self, pair, frozen_round):
         if pair in self.controller.links:
             link = self.controller.links[pair]
-            link.set_freeze_count(frozen_round)
+            link.add_freeze_count(frozen_round)
+            self.freeze_count += frozen_round
 
     def load_network(self, setup_json):
         nodes = parse_nodes(setup_json)
@@ -337,6 +340,7 @@ class Network:
     # tagged msg, when is delivered
     def push_msgs(self, msgs, curr_r):
         for msg in msgs:
+            self.num_push_msg += 1
             _, _, src, dst, _, length, _ = msg
             self.controller.feed_link(msg, self.netband[src].up_bd, self.netband[dst].down_bd)
             # r = self.get_delay_to_msg(src, dst, length, curr_r)
@@ -396,7 +400,8 @@ class Network:
         state = NetworkState(
             links_shot,
             self.controller.msg_uplink.copy(),
-            self.controller.msg_downlink.copy()
+            self.controller.msg_downlink.copy(),
+            self.freeze_count
             )
         return state
 

@@ -23,7 +23,6 @@ def parse_summery(json_file):
         return data['summery']
 
 def parse_nodes(json_file):
-    print(json_file)
     with open(json_file) as config:
         data = json.load(config)
         return data['nodes']

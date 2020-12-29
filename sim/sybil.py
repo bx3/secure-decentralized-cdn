@@ -36,7 +36,7 @@ class Sybil:
         self.conn = set() # lazy push
         self.mesh = {} # mesh push
         
-        self.secured_mesh = {} # key is peer, value is if secured
+        self.secured_mesh = {} # key is peer, value is if secured, which means peer sends TRANS
         self.trans_hist = {} # key is round, each element is a list of trans recv at that round
 
         self.peers = set(peers) # known peers
@@ -62,6 +62,12 @@ class Sybil:
 
         # useful later 
         self.topics = set()
+
+    def contacted_any_target(self):
+        for t in self.notes.targets:
+            if t in self.secured_mesh:
+                return True
+        return False
 
     def insert_msg_buff(self, msgs):
         self.in_msgs += msgs # append

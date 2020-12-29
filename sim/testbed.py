@@ -135,17 +135,22 @@ elif cmd == "term":
         # os.system('clear')
         if len(targets) >0:
             analyzer.print_target_info(snapshots[-1], targets)
-            analyzer.print_sybils(snapshots[-1])
+            analyzer.print_sybils(snapshots[-1], gossipsub.adversary)
         else:
             analyzer.print_target_info(snapshots[-1], history_targets)
-            analyzer.print_sybils(snapshots[-1])
+            analyzer.print_sybils(snapshots[-1], gossipsub.adversary)
 
         # analyzer.print_sybil(91, snapshots[-1].sybils[91]) debug
         # analyzer.print_node(1, snapshots[-1].nodes[1], snapshots[-1].sybils, snapshots[-1].nodes) 
 elif cmd == "plot":
+    if len(sys.argv) < 7:
+        print("require arguments: plot name[string] seed[int] targets[intList]")
+        sys.exit(0)
     setup = sys.argv[2]
     filename = sys.argv[3]
-    targets_str = sys.argv[4:]
+    seed = int(sys.argv[4])
+    random.seed(seed)
+    targets_str = sys.argv[5:]
     targets =[int(i) for i in targets_str]
 
     heartbeat = HEARTBEAT
@@ -161,19 +166,36 @@ elif cmd == "plot":
     snapshots = []
     eclipsed = set() 
     eclipsed_num_hist = []
-
+    eclipsed_ratio_hist = []
+    epoch = 1 # int(HEARTBEAT /4 _
+    is_first = True
     while len(eclipsed) < len(targets) and total_rounds<2000:
-        new_shots = gossipsub.start(1, total_rounds, 'eclipse', targets)
+        new_shots = None
+        if is_first:
+            new_shots = gossipsub.start(epoch, total_rounds, 'eclipse', targets)
+            is_first = False
+        else:
+            new_shots = gossipsub.start(epoch, total_rounds, 'eclipse', [])
+
         eclipsed_list = analyzer.get_eclipsed_target(new_shots, targets)
+        eclipsed_ratio_list = analyzer.get_eclipsed_ratio(new_shots, targets)
         snapshots = snapshots + new_shots
-        total_rounds += 1 
+        total_rounds += epoch
         eclipsed_num_hist += eclipsed_list
+        eclipsed_ratio_hist += eclipsed_ratio_list
         eclipsed = eclipsed_num_hist[-1]
         analyzer.print_target_info(snapshots[-1], targets)
-    print(total_rounds)
+    if len(eclipsed) < len(targets):
+        print("not eclipsed after 2000 rounds")
 
-    analyzer.write_eclipse_list(eclipsed_num_hist, filename, dirname)
-    analyzer.plot_eclipse_list(eclipsed_num_hist, filename, dirname, len(targets))
+        
+    # print(gossipsub.adversary.num_freeze_count)
+
+    # analyzer.analyze_freezer(snapshots)
+
+    # analyzer.write_eclipse_list(eclipsed_num_hist, filename, dirname)
+    # analyzer.plot_summery(snapshots, eclipsed_num_hist, eclipsed_ratio_hist, filename, dirname, len(targets))
+    # analyzer.plot_eclipse_ratio_list(eclipsed_ratio_hist, filename, dirname, len(targets))
     # analyzer.print_target_info(snapshots[-1], targets)
     # analyzer.print_sybils(snapshots[-1])
 else:

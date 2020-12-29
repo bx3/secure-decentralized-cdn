@@ -73,7 +73,7 @@ class PeerScoreCounter:
         if self.msg_delivery >= MESH_MESSAGE_DELIVERIES_THRESHOLD:
             self.P3a = 0
         else:
-            self.P3a = (MESH_MESSAGE_DELIVERIES_THRESHOLD-self.msg_delivery)**2
+            self.P3a += (MESH_MESSAGE_DELIVERIES_THRESHOLD-self.msg_delivery)**2
 
     def update_p3b(self, rate_deficit):
         # Whenever a peer is pruned with a negative score, the parameter is augmented by the rate deficit at the time of prune.

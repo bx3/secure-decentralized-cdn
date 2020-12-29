@@ -137,7 +137,7 @@ class Node:
 
         if random.random() < self.gen_prob:
             self.gen_trans_num += 1
-            print('*****', self.id, 'gen a message *******')
+            # print('*****', self.id, 'gen a message *******')
             for peer in self.mesh:
                 trans_id = TransId(self.id, self.gen_trans_num)
                 msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
@@ -155,20 +155,19 @@ class Node:
         self.scores[src].add_msg_delivery()
 
         # if not seen msg before
-        if mid not in self.msg_ids:
+        # if mid not in self.msg_ids:
+
+        if trans_id not in self.trans_set:
             self.msg_ids.add(mid)
             self.scores[src].update_p2()
-            #  if (self.id == 0):
-                #  print('Round {}: 0 get msg first from {}, new score is {}'.format(r, src, self.scores[src].get_score()))
             self.round_trans_ids.add(trans_id)
             # push it to other peers in mesh if not encountered
-            if trans_id not in self.trans_set:
-                for peer in self.mesh:
-                    if peer != src:
-                        msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
-                        # print(self.id, 'forward', trans_id, 'to', peer)
-                        self.out_msgs.append(msg)
-                self.trans_set.add(trans_id)
+            for peer in self.mesh:
+                if peer != src:
+                    msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                    # print(self.id, 'forward', trans_id, 'to', peer)
+                    self.out_msgs.append(msg)
+            self.trans_set.add(trans_id)
 
     
     def init_peers_scores(self):

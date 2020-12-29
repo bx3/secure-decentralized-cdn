@@ -66,16 +66,18 @@ class Adversary:
         self.undercovers = []
         self.msg_bombs = []
 
-        self.secured_conn = defaultdict(list) # key is sybil node, value is targeted nods
-
+        self.req_queue = []
         # weapons
-        self.num_undercover = OVERLAY_DHI + 1
+        self.num_undercover = OVERLAY_DHI
+        assert(len(sybils) >= self.num_undercover)
         self.num_bomb = len(sybils) - self.num_undercover
         self.net_freezer = 0 # total number freezed round in all links
 
         self.assign_roles_to_sybils()
         self.avail_channel = []
+        self.borrowed_channels = []
 
+        self.num_freeze_count = 0
 
     # attack codes, u is node, return messages
     def censorship_attack(self, graph, u):
@@ -188,43 +190,102 @@ class Adversary:
             return False
 
         pair_list = []
-        num_peer = len(target.mesh)
+        num_peer = 0  
         for k, _ in target.mesh.items():
-            v = target.scores[k]
-            pair_list.append((k,v))
+            if (k not in self.sybils) or k==undercover :
+                v = target.scores[k]
+                pair_list.append((k,v))
+                num_peer += 1
         sorted_pair_list = sorted(pair_list, key=lambda x: x[1], reverse=True)
         sorted_peer = [i for i,j in sorted_pair_list]
+        medium_node = sorted_pair_list[int(num_peer/2)]
+        medium_score = medium_node[1]
         rank = sorted_peer.index(undercover)
-        if rank < num_peer/2 and rank < OVERLAY_D /2:
+        undercover_score = sorted_pair_list[rank][1]
+        if ( (undercover_score>ADV_WELL_LOWER_BOUND) or 
+                (undercover_score>ADV_SAFE_RATIO*abs(medium_score))):
             return True
         else:
             return False
-
+           
+    def is_sybil_in_target_mesh(self, node, u):
+        for peer in node.mesh:
+            if peer == u:
+                return True
+        return False
 
     # snapshots[-1]
     def redistribute_channel_to_undercover(self, snapshot):
+        for u, c in self.borrowed_channels:
+            self.avail_channel.append(c)
+            self.sybils[u].notes.release_channel(c)
+        self.borrowed_channels.clear()
+
+
+        in_contact_cover = []
         for u in self.undercovers:
+            for t in self.targets:
+                if self.is_sybil_in_target_mesh(snapshot.nodes[t], u):
+                    in_contact_cover.append(u)
+                    break
+
+        for u in in_contact_cover:
             sybil = self.sybils[u]
-            for channel in sybil.notes.channels:
-                # if sybil is meshed by channel already 
+            targets = sybil.notes.targets
+            for t in targets:
+                node = snapshot.nodes[t]
+                if not self.is_undercover_medium_well(node, u):
+                    req = (t, u)
+                    if req not in self.req_queue:
+                        self.req_queue.append(req)
+        # free channels from sybils
+        for u in in_contact_cover:
+            sybil = self.sybils[u]
+            i = 0
+            remove_channel = []
+            while i < len(sybil.notes.channels):
+                channel = sybil.notes.channels[i]
                 target = channel.node
                 node = snapshot.nodes[target]
-                # reclaim channel from sybil
                 if self.is_undercover_medium_well(node, u):
-                    sybil.notes.release_channel(channel)
+                    remove_channel.append(channel)
                     self.avail_channel.append(channel)
-                    self.secured_conn[u].append(target)
+                i += 1
+            for channel in remove_channel:
+                sybil.notes.release_channel(channel)
+
+        # print("avail_channel", [c.node for c in self.avail_channel])
+        # print("req_queue", self.req_queue)
 
         # redistribute avail channels to other undercovers
-        while len(self.avail_channel) > 0:
-            channel = self.avail_channel.pop(0) 
-            sybil_list = list(self.sybils.keys())
-            # random.shuffle(sybil_list)
-            for u in sybil_list:
-                # the targeted node by the channel is not yet secure by adv
-                if channel.node not in self.secured_conn[u]:
-                    self.sybils[u].notes.add_channel(channel)
-                    break
+        if len(self.req_queue) > 0:
+            left_channels = []
+            while len(self.avail_channel) > 0:
+                channel = self.avail_channel.pop(0) 
+                target = channel.node
+
+                req_using = None 
+                for i in range(len(self.req_queue)):
+                    req_target, req_sybil = self.req_queue[i]
+                    # print(req_target, req_sybil)
+                    if req_target == target:
+                        self.sybils[req_sybil].notes.add_channel(channel)
+                        req_using = (req_target, req_sybil)
+                        break
+
+                if req_using == None:
+                    left_channels.append(channel)
+                else:
+                    self.req_queue.remove(req_using)
+            self.avail_channel = left_channels
+    
+        # if len(in_contact_cover) > 0:
+            # for c in self.avail_channel:
+                # u = random.choice(in_contact_cover)
+                # self.sybils[u].notes.add_channel(c)
+                # self.borrowed_channels.append((u,c))
+            # self.avail_channel.clear()
+        
 
     # a simple implement, much room to improve
     def assign_undercover_to_targets(self, targets, r, pubs):
@@ -265,14 +326,25 @@ class Adversary:
             for req in reqs:
                 self.bombers_accept_request(req)
 
-    def handle_freeze_requests(self, r, nodes, network):
+    def get_peers_to_freeze(self, node):
+        peers_to_freeze = []
+        for peer in node.mesh:
+            if peer not in self.sybils:
+                score = node.scores[peer]
+                if score > ADV_HONEST_REPRESS:
+                    peers_to_freeze.append(peer)
+        return peers_to_freeze
+
+    def handle_freeze_requests(self, r, snapshot, network):
+        nodes = snapshot.nodes
         for t in self.targets:
             node = nodes[t]
-            for peer in node.mesh:
-                if peer not in self.sybils:
-                    # freeze it for 1 round
-                    pair = (peer, t)
-                    network.break_link(pair, 1)
+            peers = self.get_peers_to_freeze(node)
+            for peer in peers:
+                # freeze it for 1 round
+                pair = (peer, t)
+                network.break_link(pair, 1)
+                self.num_freeze_count += 1
 
 
     def eclipse_target(self, r, snapshots, network):
@@ -282,8 +354,8 @@ class Adversary:
         pubs = self.get_all_publishers(snapshots[-1])
         msgs = self.assign_undercover_to_targets(self.targets, r, pubs)
 
-        if r % HEARTBEAT == 1:
-            self.redistribute_channel_to_undercover(snapshots[-1])
+        # if r % HEARTBEAT == 1:
+        self.redistribute_channel_to_undercover(snapshots[-1])
 
         # handle all bomb requests, requests are later handled by
         # self.handle_bomb_requests(snapshots[-1])

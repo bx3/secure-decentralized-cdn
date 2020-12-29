@@ -382,7 +382,7 @@ def analyze_snapshot(snapshots):
     min_patch = mpatches.Patch(color='green', label='min')
     mean_patch = mpatches.Patch(color='blue', label='mean')
     axs[0].legend(handles=[max_patch,min_patch,mean_patch])
-    # axs[0].title.set_text("no score")   
+    #axs[0].title.set_text("cumulative freeze")   
     
     target = 1
     eclipse_hist_in, eclipse_hist_out = analyze_eclipse(snapshots, target)
@@ -543,6 +543,7 @@ def print_node(t, node, sybils, nodes):
 def print_target_info(snapshot, targets):
     nodes = snapshot.nodes
     sybils = snapshot.sybils
+    print("\t Round", snapshot.round)
     for t in targets:
         print_node(t, nodes[t], sybils, nodes)
 
@@ -555,9 +556,13 @@ def print_sybil(u, sybil):
         attempts=sybil.attempts, 
         channels=sybil.channels))
 
-def print_sybils(snapshot):
+def print_sybils(snapshot, adversary):
     sybils = snapshot.sybils
-    print("\t\tSybils")
+    avail_channels = []
+    for c in adversary.avail_channel:
+        avail_channels.append(c.node)
+    
+    print("\t\tSybils  ", "Round", snapshot.round, "  avail channel", avail_channels)
     for u, sybil in sybils.items():
         print_sybil(u, sybil)
 
@@ -576,18 +581,127 @@ def get_eclipsed_target(snapshots, targets):
         hist.append(eclipsed)
     return hist
 
+def get_eclipsed_ratio(snapshots, targets):
+    hist = []
+    for snapshot in snapshots:
+        num_eclipsed = 0
+        num_mesh = 0
+        nodes = snapshot.nodes
+        for t in targets:
+            for peer in nodes[t].mesh:
+                num_mesh += 1
+                if peer in snapshot.sybils:
+                    num_eclipsed += 1
+
+        
+        hist.append(float(num_eclipsed)/num_mesh)
+    return hist
+
+
 def write_eclipse_list(data, filename, dirname):
     filepath = dirname + '/' + filename
     with open(filepath, 'w') as w:
         for i, j in enumerate(data):
             w.write(str(i) + " " + str(len(j)) + "\n ")
 
-def plot_eclipse_list(data, filename, dirname, num_targets):
+def plot_summery(snapshots, data, data1, filename, dirname, num_targets):
     num_eclipsed_list = [len(i) for i in data]
+    fig, axs = plt.subplots(4)
+    
+    filepath = dirname + '/' + filename
+    axs[0].plot(num_eclipsed_list)
+    # title_txt = 'number eclipsed out of ' + str(num_targets) + ' with ' + filename
+    # axs[0].set_title(title_txt, size='small')  
+    # axs[0].set_xlabel('round', fontsize='small')
+    axs[0].set_ylabel('# eclipsed')
+    axs[0].axes.xaxis.set_ticklabels([])
+    axs[1].plot(data1)
+    title_txt = 'ratio peer eclipsed out of ' + str(num_targets) + ' with ' + filename
+    # axs[1].set_xlabel('round', fontsize='small')
+    axs[1].set_ylabel('ratio eclipsed')
+    # axs[1].set_title(title_txt, size='small')  
+    axs[1].axes.xaxis.set_ticklabels([])
+
+    freeze_hist = []
+    prev_freeze_count = 0
+    for snapshot in snapshots:
+        network = snapshot.network
+        curr_round_freeze_count = network.freeze_count - prev_freeze_count
+        freeze_hist.append(curr_round_freeze_count)
+        prev_freeze_count = network.freeze_count
+
+    accumulate = [0]
+    acc = 0
+    for i in freeze_hist:
+        acc += i
+        accumulate.append(acc)
+
+    axs[2].plot(accumulate)
+    # axs[2].set_xlabel('round', fontsize='small')
+    axs[2].set_ylabel('total # freeze')
+    # axs[2].set_title("cumulative freeze", size='small')   
+    axs[2].axes.xaxis.set_ticklabels([])
+
+    axs[3].plot(freeze_hist)
+    axs[3].set_ylabel('# freeze')
+    axs[3].set_xlabel('round')
+    # axs[3].set_title("number freeze per round", size='small')   
+
+    plt.tight_layout()
+    plt.show()
+    fig.savefig(filepath)
+
+def plot_eclipse_list(data, data1, filename, dirname, num_targets):
+    num_eclipsed_list = [len(i) for i in data]
+    fig, axs = plt.subplots(2)
+    
+    filepath = dirname + '/' + filename
+    axs[0].plot(num_eclipsed_list)
+    title_txt = 'number eclipsed out of ' + str(num_targets) + ' with ' + filename
+    axs[0].title.set_text(title_txt)  
+    axs[1].plot(data1)
+    title_txt = 'ratio peer eclipsed out of ' + str(num_targets) + ' with ' + filename
+    axs[1].title.set_text(title_txt)  
+    plt.tight_layout()
+    plt.show()
+    fig.savefig(filepath)
+
+def plot_eclipse_ratio_list(data, filename, dirname, num_targets):
     fig, ax = plt.subplots(1)
     filepath = dirname + '/' + filename
-    ax.plot(num_eclipsed_list)
-    title_txt = 'number eclipsed out of ' + str(num_targets) + ' with ' + filename
+    ax.plot(data)
+    title_txt = 'ratio peer eclipsed out of ' + str(num_targets) + ' with ' + filename
     ax.title.set_text(title_txt)  
     plt.show()
     plt.savefig(filepath)
+
+def analyze_freezer(snapshots):
+    freeze_hist = []
+    prev_freeze_count = 0
+    for snapshot in snapshots:
+        network = snapshot.network
+        curr_round_freeze_count = network.freeze_count - prev_freeze_count
+        freeze_hist.append(curr_round_freeze_count)
+        prev_freeze_count = network.freeze_count
+
+
+    accumulate = [0]
+    acc = 0
+    for i in freeze_hist:
+        acc += i
+        accumulate.append(acc)
+    
+    print(accumulate[-1])
+
+    # fig, axs = plt.subplots(2)
+    
+    # axs[0].plot(accumulate)
+    # axs[0].set(ylabel='total # freeze', xlabel='round')
+    # axs[0].title.set_text("cumulative freeze")   
+
+    # axs[1].plot(freeze_hist)
+    # axs[1].set(ylabel='# freeze in each round', xlabel='round')
+    # axs[1].title.set_text("number freeze per round")   
+    # plt.tight_layout()
+    # plt.show()
+
