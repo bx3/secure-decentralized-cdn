@@ -42,7 +42,6 @@ class Experiment:
     # # # # # # # # 
     def start(self, epoch, start_round=0, attack_strategy='None', targets=[]):
         curr_shots = [] 
-        print(len(self.sybils))
         for r in range(start_round, start_round+epoch):
             # debug
             # if r % HEARTBEAT == 0:
@@ -74,7 +73,6 @@ class Experiment:
 
     def push_sybil_msgs(self, r):
         for u, node in self.sybils.items():
-            print("push_sybil_msgs")
             # if network has too many messages, stop
             msgs = node.send_msgs() 
             self.network.push_msgs(msgs, r)
@@ -85,6 +83,7 @@ class Experiment:
             # if network has too many messages, stop
             # if not self.network.is_uplink_congested(u):
             msgs = node.send_msgs() 
+            # print(u, 'send', len(msgs), 'msgs')
             self.network.push_msgs(msgs, curr_r)
 
     def attack_management(self, r, network, targets):
@@ -157,7 +156,8 @@ class Experiment:
                         u_id,
                         u["interval"],
                         u["known"],
-                        self.heartbeat_period
+                        self.heartbeat_period,
+                        u["topics"]
                     )
                 else:
                     self.sybils[u_id] = Sybil(
@@ -165,7 +165,8 @@ class Experiment:
                         u_id,
                         u["interval"],
                         u["known"],
-                        self.heartbeat_period
+                        self.heartbeat_period,
+                        u["topics"]
                     )
             else: 
                 print('Error. config file duplicate id')
@@ -177,16 +178,17 @@ class Experiment:
         mesh = {} # key is node, value is mesh nodes
         # num_conn_1 = 0
         for u, node in self.nodes.items():
-            num_out = int(OVERLAY_D / 2)
-            known_peers = node.peers.copy()
-            known_peers = list(known_peers)
-            random.shuffle(known_peers)
-            chosen = known_peers[:num_out]
-            for v in chosen:
-                # if v == 1:
-                    # num_conn_1 += 1
-                node.setup_peer(v, Direction.Outgoing, 0)
-                self.nodes[v].setup_peer(u, Direction.Incoming, 0) 
+            for topic, actor in node.actors.items():
+                num_out = int(OVERLAY_D / 2)
+                known_peers = actor.peers.copy()
+                known_peers = list(known_peers)
+                random.shuffle(known_peers)
+                chosen = known_peers[:num_out]
+                for v in chosen:
+                    # if v == 1:
+                        # num_conn_1 += 1
+                    node.setup_peer(v, Direction.Outgoing, 0, topic)
+                    self.nodes[v].setup_peer(u, Direction.Incoming, 0, topic) 
 
         # print('num_conn_1', num_conn_1)
 

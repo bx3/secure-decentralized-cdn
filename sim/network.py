@@ -129,7 +129,7 @@ class Controller:
         self.msg_downlink = {} # same as above
 
     def feed_link(self, msg, up_bd_lim, down_bd_lim):
-        mtype, mid, src, dst, _, length, payload = msg
+        mtype, mid, src, dst, _, length, payload, _, _ = msg
         pair = (src, dst)
         if pair not in self.links:
             self.links[pair] = LinkState(up_bd_lim, down_bd_lim, msg)
@@ -341,7 +341,7 @@ class Network:
     def push_msgs(self, msgs, curr_r):
         for msg in msgs:
             self.num_push_msg += 1
-            _, _, src, dst, _, length, _ = msg
+            _, _, src, dst, _, length, _, _, _ = msg
             self.controller.feed_link(msg, self.netband[src].up_bd, self.netband[dst].down_bd)
             # r = self.get_delay_to_msg(src, dst, length, curr_r)
             # self.enqueue_msg(msg, r, dst)
@@ -357,7 +357,7 @@ class Network:
                 h_msg = []
                 a_msg = []
                 for msg in msgs:
-                    _, _, src, dst, adv, length, _ = msg
+                    _, _, src, dst, adv, length, _, _, _ = msg
                     if adv == AdvRate.SybilFlat:
                         a_msg.append(msg)
                     elif adv == AdvRate.SybilPriority:

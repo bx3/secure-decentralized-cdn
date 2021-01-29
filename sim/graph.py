@@ -2,6 +2,7 @@
 from config import *
 import random
 from collections import namedtuple
+from collections import defaultdict
 from messages import *
 from scores import PeerScoreCounter
 import sys
@@ -14,7 +15,7 @@ State = namedtuple('State', [
     'out_msgs', 
     'scores', 
     'scores_decompose',
-    'trans_set', 
+    'trans_record', 
     'transids', 
     'gen_trans_num', 
     'out_conn']
@@ -27,18 +28,73 @@ class Peer:
         self.direction = direction
         self.counter = PeerScoreCounter()
 
+class Node:
+    def __init__(self, role, u, interval, topic_peers, heartbeat_period, topics):
+        self.id = u # my id
+        self.role = role
+        self.topics = topics
+        self.topic_peers = topic_peers
+        self.actors = {} # key is topic, value is actor
+        self.in_msgs = []
+        for topic in topics:
+            peers = topic_peers[str(topic)] # json convert key into string
+            self.actors[topic] = TopicActor(role, u, interval, peers, heartbeat_period, topic)
+
+    def get_all_mesh(self):
+        meshes = set()
+        for topic, actor in self.actors.items():
+            meshes = meshes.union(actor.mesh)
+        return meshes
+
+    def setup_peer(self, peer, direction, r, topic):
+        self.actors[topic].setup_peer(peer, direction, r)
+
+    # TODO randomize order maybe
+    def send_msgs(self):
+        out_msgs = []
+        for topic, actor in self.actors.items():
+            topic_msgs = actor.send_msgs()
+            out_msgs += topic_msgs
+        return out_msgs
+
+    def insert_msg_buff(self, msgs):
+        self.in_msgs += msgs # append
+
+    def process_msgs(self, curr_r):
+        #print("node", self.id, "process_msgs", len(self.in_msgs))
+        actor_msgs = defaultdict(list)
+        while len(self.in_msgs) > 0:
+            msg = self.in_msgs.pop(0)
+            mtype, _, src, dst, _, _, payload, topic, send_r = msg
+            if topic not in self.actors:
+                print('Warning. Receive other topic msg')
+            actor_msgs[topic].append(msg)
+    
+        for topic in self.topics:
+            actor = self.actors[topic]
+            in_msgs = actor_msgs[topic]
+            actor.process_msgs(in_msgs, curr_r)
+
+    def get_states(self):
+        states = {}
+        for topic, actor in self.actors.items():
+            state = actor.get_states()
+            states[topic] = state
+        return states
+
 # assume there is only one topic then
 # generic data structure usable by all protocols
-class Node:
-    def __init__(self, role, u, interval, peers, heartbeat_period):
+class TopicActor:
+    def __init__(self, role, u, interval, peers, heartbeat_period, topic):
         self.id = u # my id
+        self.topic = topic
         self.role = role
         self.conn = set() # lazy push
         self.mesh = {} # mesh push
 
         self.peers = set(peers) # known peers
         self.out_msgs = [] # msg to push in the next round
-        self.in_msgs = []
+        # self.in_msgs = []
         self.D_scores = 2 #
         self.scores = {} # all peer score, key is peer, value is PeerScoreCounter
         self.seqno = 0
@@ -58,31 +114,25 @@ class Node:
         self.gen_trans_num = 0
 
         self.round_trans_ids = set() # keep track of msgs used for analysis
-        self.trans_set = set()
-
+        self.trans_record = {}  # key is trans_id, value is (recv r, send r) 
         self.last_heartbeat = -1
-
-        # useful later 
-        self.topics = set()
-
-    def insert_msg_buff(self, msgs):
-        self.in_msgs += msgs # append
 
     def run_scores_background(self, curr_r):
         for u, counters in self.scores.items():
             counters.run_background(curr_r)
 
     # worker func 
-    def process_msgs(self, r):
+    def process_msgs(self, msgs, r):
         # schedule heartbeat 
         self.schedule_heartbeat(r)
         # background peer local view update
         self.run_scores_background(r)
         self.round_trans_ids.clear()
+        in_msgs = msgs.copy()
         # handle msgs 
-        while len(self.in_msgs) > 0:
-            msg = self.in_msgs.pop(0)
-            mtype, _, src, dst, _, _, payload = msg
+        while len(in_msgs) > 0:
+            msg = in_msgs.pop(0)
+            mtype, _, src, dst, _, _, payload, topic, send_r = msg
             assert self.id == dst
             if mtype == MessageType.GRAFT:
                 # if self.id == 0:
@@ -130,22 +180,22 @@ class Node:
     # only gen transaction when previous one is at least pushed 
     def gen_trans(self, r):
         for msg in self.out_msgs:
-            mtype, _, _, _, _, _, tid = msg
+            mtype, _, _, _, _, _, tid, topic, send_r = msg
             # if my last msg is not pushed, give up
             if mtype == MessageType.TRANS and tid.src == self.id:
                 return
 
         if random.random() < self.gen_prob:
             self.gen_trans_num += 1
-            # print('*****', self.id, 'gen a message *******')
+            print('*****', self.id, 'gen a message *******')
             for peer in self.mesh:
                 trans_id = TransId(self.id, self.gen_trans_num)
-                msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id, r)
                 # print(self.id, 'generate trans', trans_id, 'to', peer)
                 self.out_msgs.append(msg)
 
     def proc_TRANS(self, msg, r):
-        _, mid, src, _, _, _, trans_id = msg
+        _, mid, src, _, _, _, trans_id, topic, send_r = msg
         # print('node', self.id, src)
         # print(self.mesh)
         # in case the peer has not been accepted by the mesh, but relay msg
@@ -157,25 +207,25 @@ class Node:
         # if not seen msg before
         # if mid not in self.msg_ids:
 
-        if trans_id not in self.trans_set:
+        if trans_id not in self.trans_record:
             self.msg_ids.add(mid)
             self.scores[src].update_p2()
             self.round_trans_ids.add(trans_id)
             # push it to other peers in mesh if not encountered
             for peer in self.mesh:
                 if peer != src:
-                    msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id)
+                    msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id, r)
                     # print(self.id, 'forward', trans_id, 'to', peer)
                     self.out_msgs.append(msg)
-            self.trans_set.add(trans_id)
+            self.trans_record[trans_id] = (r, send_r)
 
     
     def init_peers_scores(self):
         for p in self.peers:
             self.scores[p] = PeerScoreCounter()
 
-    def gen_msg(self, mtype, peer, msg_len, payload):
-        msg = Message(mtype, self.seqno, self.id, peer, AdvRate.NotSybil, msg_len, payload)
+    def gen_msg(self, mtype, peer, msg_len, payload, r):
+        msg = Message(mtype, self.seqno, self.id, peer, AdvRate.NotSybil, msg_len, payload, self.topic, r)
         self.seqno += 1
         return msg
 
@@ -187,17 +237,17 @@ class Node:
         self.out_msgs.clear()
         return out_msg
 
-    def prune_peer(self, peer):
+    def prune_peer(self, peer, r):
         # add backoff counter
         # if self.id == 0:
         
-        msg = self.gen_msg(MessageType.PRUNE, peer, CTRL_MSG_LEN, None)
+        msg = self.gen_msg(MessageType.PRUNE, peer, CTRL_MSG_LEN, None, r)
         self.mesh.pop(peer, None)
         self.scores[peer].in_mesh = False
         self.out_msgs.append(msg)
 
     def graft_peer(self, peer, r):
-        msg = self.gen_msg(MessageType.GRAFT, peer, CTRL_MSG_LEN, None)
+        msg = self.gen_msg(MessageType.GRAFT, peer, CTRL_MSG_LEN, None, r)
         self.mesh[peer] = Direction.Outgoing
         if peer not in self.scores:
             self.scores[peer] = PeerScoreCounter()
@@ -225,7 +275,7 @@ class Node:
             if counters.get_score() < 0:
                 counters.update_p3b(-counters.get_score())
                 # print(self.id, "prune a peer", u, 'due to neg score')
-                self.prune_peer(u)
+                self.prune_peer(u, r)
 
         # add peers if needed
         if len(self.mesh) < OVERLAY_DLO:
@@ -267,7 +317,7 @@ class Node:
 
             remove_peers = mesh_peers[self.D:]
             for peer in remove_peers:
-                self.prune_peer(peer)
+                self.prune_peer(peer, r)
                 # print(self.id, "prune a peer", peer, 'due to high mesh')
 
         # even there is enough mesh, check if there are enough outgoing mesh
@@ -322,21 +372,21 @@ class Node:
 
     # find other peers to add
     def proc_PRUNE(self, msg):
-        _, _, src, _, _, _, _ = msg
+        _, _, src, _, _, _, _, _, _ = msg
         if src in self.mesh:
             self.mesh.pop(src, None)
             self.scores[src].in_mesh = False
 
     # return true if it won't pass
     def filter_graft(self, msg, r):
-        _, _, src, _, _, _, _ = msg
+        _, _, src, _, _, _, _, _, _ = msg
         
         # check score
         if src in self.scores:
             counters = self.scores[src]
             if counters.get_score() < 0:
                 # print(self.id, 'reject peer', src, 'due to neg score')
-                msg = self.gen_msg(MessageType.PRUNE, src, CTRL_MSG_LEN, None)
+                msg = self.gen_msg(MessageType.PRUNE, src, CTRL_MSG_LEN, None, r)
                 self.out_msgs.append(msg)
                 return True
 
@@ -346,7 +396,7 @@ class Node:
                 is_outbound = True
         # check existing number peer in the mesh
         if len(self.mesh) >= OVERLAY_DHI and (not is_outbound):
-            msg = self.gen_msg(MessageType.PRUNE, src, CTRL_MSG_LEN, None)
+            msg = self.gen_msg(MessageType.PRUNE, src, CTRL_MSG_LEN, None, r)
             self.out_msgs.append(msg)
             # print(self.id, 'reject peer', src, 'due to mesh limit')
             return True
@@ -355,7 +405,7 @@ class Node:
 
     # the other peer has added me to its mesh, I will add it too 
     def proc_GRAFT(self, msg, r):
-        _, _, src, _, _, _, _ = msg
+        _, _, src, _, _, _, _, _, _ = msg
         if src in self.mesh:
             return
 
@@ -447,6 +497,7 @@ class Node:
         for peer, direction in self.mesh.items():
             if direction == Direction.Outgoing:
                 out_conn.append(peer)
+        
 
         return State(
                 self.role, 
@@ -456,7 +507,7 @@ class Node:
                 self.out_msgs.copy(), 
                 scores_value, 
                 scores_decompose,
-                self.trans_set.copy(), 
+                self.trans_record.copy(), 
                 self.round_trans_ids.copy(), 
                 self.gen_trans_num,
                 out_conn

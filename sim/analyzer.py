@@ -7,6 +7,8 @@ from collections import defaultdict
 from config import *
 from messages import Direction
 from messages import MessageType
+import numpy as np
+import sys
 
 def get_degrees(snapshots):
     # get the mean/max/min degrees of all nodes in all snapshots
@@ -44,33 +46,38 @@ class DisjointSet(object):
         if them != us:
             us.parent = them
 
-def count_components(nodes):
+def count_components(nodes, topic):
     sets = {}
     honest_sets = {}
-    for u in nodes:
-        node = nodes[u]
+    actors = {}
+    for u, node in nodes.items():
+        if topic in node:
+            actors[u] = node[topic]
+
+    for u in actors:
+        actor = actors[u]
         sets[u] = DisjointSet()
-        if node.role != NodeType.SYBIL:
+        if actor.role != NodeType.SYBIL:
             honest_sets[u] = DisjointSet()
     # Get the number of component
-    for u in nodes:
-        node = nodes[u]
-        for vtx in node.mesh:
+    for u in actors:
+        actor = actors[u]
+        for vtx in actor.mesh:
             sets[u].union(sets[vtx])
-            if node.role != NodeType.SYBIL and nodes[vtx].role != NodeType.SYBIL: 
+            if actor.role != NodeType.SYBIL and actors[vtx].role != NodeType.SYBIL: 
                 honest_sets[u].union(honest_sets[vtx])
     component = len(set(x.find() for x in sets.values()))
     honest_component = len(set(x.find() for x in honest_sets.values()))
     return component, honest_component
 
-def get_components(snapshots):
+def get_components(snapshots, topic):
     # get the number of components and honest components of all snapshots
     components = []
     honest_components = []
     for snapshot in snapshots:
         all_nodes = snapshot.nodes.copy()
         all_nodes.update(snapshot.sybils)
-        component, honest_component = count_components(all_nodes)
+        component, honest_component = count_components(all_nodes, topic)
         components.append(component)
         honest_components.append(honest_component)
 
@@ -88,13 +95,17 @@ def handle_single_state(trans_recv, reached90_transid, state, node_id):
                 trans_recv[trans_id].add(node_id)
 
 
-def get_num_honest(snapshot):
+def get_num_honest(snapshot, topic):
     num_honest = 0
+    honests = set()
     for u, node in snapshot.nodes.items():
-        if node.role == NodeType.PUB or node.role == NodeType.LURK:
-            num_honest += 1
+        if topic in node:
+            actor = node[topic]
+            if actor.role == NodeType.PUB or actor.role == NodeType.LURK:
+                num_honest += 1
+                honests.add(u)
 
-    return num_honest
+    return num_honest, honests
 
 
 def analyze_eclipse(snapshots, target):
@@ -126,17 +137,13 @@ def throughput_90(snapshots):
     for r in range(len(snapshots)):
         # consider only honest node
         nodes = snapshots[r].nodes
-        net = snapshots[r].network
         trans_nodes = defaultdict(set)
         acc_gen_msg = 0
-
         for u, state in nodes.items():
-            for tid in state.trans_set: 
+            for tid, tp in state.trans_record: 
                 trans_nodes[tid].add(u)
             acc_gen_msg += state.gen_trans_num
-
         num_90_msg = 0
-
 
         for tid, n in trans_nodes.items():
             if len(n) > 0.9 * num_honest_node:
@@ -144,11 +151,92 @@ def throughput_90(snapshots):
 
         acc_recv_msg_hist.append(num_90_msg)
         acc_gen_msg_hist.append(acc_gen_msg)
-
-
-
-
     return acc_recv_msg_hist, acc_gen_msg_hist
+
+def trans_latency_90(snapshots, topic):
+    trans_latency = defaultdict(list) # key is transid, value is a list of latency
+    snapshot = snapshots[-1]
+    nodes = snapshot.nodes
+    trans_gen_r = {}
+    for u, node in nodes.items():
+        if topic in node:
+            actor = node[topic] 
+            for tid, tp in actor.trans_record.items():
+                lat = tp[0] - tp[1] # 
+                trans_latency[tid].append((u, lat))
+                trans_gen_r[tid] = tp[1]
+
+    num_honest_node, honest_nodes = get_num_honest(snapshots[-1], topic)
+    # for tid, latencies in trans_latency.items():
+        # if len(latencies) != num_honest_node -1:
+            # print('topic', topic, 'Some node does not recv', tid)
+            # recved = [a for a,l in latencies] + [tid[0]] #  + sender
+            # missing = honest_nodes.difference(set(recved)) 
+            # print(missing)
+            # sys.exit(1)
+
+    # find 90 percentile
+    trans_90_lat = {}
+    for tid, latencies in trans_latency.items():
+        lats = [l for a, l in latencies]
+        sorted_lat = sorted(lats)
+        lat90 = sorted_lat[int(len(sorted_lat)*9.0/10.0) - 1]
+        trans_90_lat[tid] = lat90
+    return trans_90_lat, trans_gen_r
+
+
+def plot_topics_latency(snapshots, topics):
+    topic_latencies = {}
+    topic_trans_gen = {}
+    for topic in topics:
+        components, honest_components = get_components(snapshots, topic)
+        # plot_components(axs[0], honest_components)
+        topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90(snapshots, topic)
+    plot_topic_latency(topic_latencies, topic_trans_gen, topics)
+
+def get_cmap(n, name='hsv'):
+    '''Returns a function that maps each index in 0, 1, ..., n-1 to a distinct
+    RGB color; the keyword argument name must be a standard mpl colormap name.'''
+    return plt.cm.get_cmap(name, n)
+
+def plot_topic_latency(topic_latencies, topic_trans_gen, topics):
+    fig, axs = plt.subplots(len(topics))
+    topics_data = {}
+    publisers = set()
+    for topic in topics:
+        trans_gen = topic_trans_gen[topic]
+        latencies = topic_latencies[topic]
+        nodes_data = defaultdict(list)
+        for tid, lat in latencies.items():
+            gen_time = trans_gen[tid]
+            node_id, trans_id = tid
+            nodes_data[node_id].append((gen_time, lat))
+            publisers.add(node_id)
+        topics_data[topic] = nodes_data
+
+    node_color = {}
+    for p in publisers:
+        node_color[p] = np.random.rand(3,)
+    print(node_color) 
+    for i in range(len(topics)):
+        topic = topics[i]
+        nodes_data = topics_data[topic] 
+        k = 0
+        for u in nodes_data:
+            gen_time, lat = zip(*nodes_data[u])
+            print('topic', i, 'node', u, gen_time, lat)
+            axs[i].bar(list(gen_time), list(lat), label='node '+str(u))
+            axs[i].set_title('topic ' + str(i) , fontsize='small')
+            axs[i].set_xlabel('round', fontsize='small')
+            axs[i].set_ylabel('latency (round)', fontsize='small')
+            axs[i].legend(loc='upper right')
+            k += 1
+        # num_link_patch = mpatches.Patch(color='green', label='num link')
+        # num_trans_link_patch = mpatches.Patch(color='blue', label='num link with trans')
+        # axs[i].legend(handles=[num_link_patch, num_trans_link_patch])   
+    plt.show()
+
+
 
 def latency(acc_recv_msg_hist, acc_gen_msg_hist):
     assert len(acc_recv_msg_hist) == len(acc_gen_msg_hist)
@@ -320,13 +408,12 @@ def plot_graph_deg(ax, degrees_mean, degrees_max, degrees_min):
     ax.legend(handles=[max_patch,min_patch,mean_patch])
 
 def plot_components(ax, honest_components):
-
      ax.plot(honest_components)
      ax.set(ylabel='# honest components', xlabel='round')
 
-def plot_eclipse_attack(snapshots, targets):
+def plot_eclipse_attack(snapshots, targets, topic):
     degrees_mean, degrees_max, degrees_min = get_degrees(snapshots)
-    components, honest_components = get_components(snapshots)
+    components, honest_components = get_components(snapshots, topic)
     acc_recv_msg_hist, acc_gen_msg_hist = throughput_90(snapshots)
     avg_throughput_hist = avg_throughput(acc_recv_msg_hist, 20)
     avg_gen_hist = avg_throughput(acc_gen_msg_hist, 20)

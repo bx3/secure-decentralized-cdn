@@ -50,10 +50,14 @@ elif cmd == "run":
         sys.exit(0)
     setup = sys.argv[2]
     epoch = int(sys.argv[3])
+    summery = gn.parse_summery(setup)
     heartbeat = HEARTBEAT
     gossipsub = Experiment(setup, heartbeat)
     snapshots = gossipsub.start(epoch)
-    analyzer.plot_eclipse_attack(snapshots, [1])
+
+    # analyzer.plot_eclipse_attack(snapshots, [1])
+    topics = [i for i in range(summery['NUM_TOPIC'])]
+    analyzer.plot_topics_latency(snapshots, topics)
     print("start analyze")
     # analyze_network(snapshots)
     # analyze_snapshot(snapshots)

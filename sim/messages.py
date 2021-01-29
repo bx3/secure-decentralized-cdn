@@ -23,7 +23,7 @@ class AdvRate(Enum):
 
 # other MessageType for Flood ...
 # mtype, mid, src, dst, adv, len, payload = msg
-Message = namedtuple('Message', ['mType', 'id', 'src', 'dst', 'adv', 'length', 'payload'])
+Message = namedtuple('Message', ['mType', 'id', 'src', 'dst', 'adv', 'length', 'payload', 'topic', 'time'])
 
 # Graft = namedtuple('Graft', [''])
 Heartbeat = namedtuple('Heartbeat', ['null'])
