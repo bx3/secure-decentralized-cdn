@@ -69,7 +69,7 @@ class Adversary:
         self.req_queue = []
         # weapons
         self.num_undercover = OVERLAY_DHI
-        assert(len(sybils) >= self.num_undercover)
+        # assert(len(sybils) >= self.num_undercover)
         self.num_bomb = len(sybils) - self.num_undercover
         self.net_freezer = 0 # total number freezed round in all links
 

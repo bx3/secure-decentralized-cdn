@@ -42,30 +42,30 @@ class Experiment:
     # # # # # # # # 
     def start(self, epoch, start_round=0, attack_strategy='None', targets=[]):
         curr_shots = [] 
+        print(len(self.sybils))
         for r in range(start_round, start_round+epoch):
             # debug
             # if r % HEARTBEAT == 0:
                 # print("****\t\theartbeat generated", r, HEARTBEAT)
 
             # start attack
-            self.attack_management(r, self.network, targets)
+            # self.attack_management(r, self.network, targets)
 
             # network store messages from honest nodes
-            self.push_sybil_msgs(r)
+            # self.push_sybil_msgs(r)
             self.push_honest_msgs(r)
 
-            if r > 0:
-                self.attack_freeze_network(r)
+            # if r > 0:
+                # self.attack_freeze_network(r)
             
             # network deliver msgs
             self.deliver_msgs(r)
             # honest node retrieve msgs 
             self.honest_nodes_handle_msgs(r)
-            self.sybil_nodes_handle_msgs(r)
+            # self.sybil_nodes_handle_msgs(r)
 
             # assume sybils have powerful internal network, node processing speed
-            self.sybil_use_fast_internet(r) 
-            # self.sybil_nodes_handle_msgs(r)
+            # self.sybil_use_fast_internet(r) 
 
             # take snapshot
             curr_shots.append(self.take_snapshot(r))
@@ -74,6 +74,7 @@ class Experiment:
 
     def push_sybil_msgs(self, r):
         for u, node in self.sybils.items():
+            print("push_sybil_msgs")
             # if network has too many messages, stop
             msgs = node.send_msgs() 
             self.network.push_msgs(msgs, r)

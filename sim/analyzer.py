@@ -2,7 +2,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import networkx as nx
-import xlsxwriter 
+# import xlsxwriter 
 from collections import defaultdict
 from config import *
 from messages import Direction
@@ -180,40 +180,41 @@ def avg_throughput(acc_recv_msg_hist, avg_step=10):
     return avg_throughput_hist
 
 def dump_node(snapshots, node_id, data_dir=None):
-    workbook = xlsxwriter.Workbook(data_dir+'/node{}.xlsx'.format(node_id)) 
-    worksheet = workbook.add_worksheet()
-    bold = workbook.add_format({'bold': True})
-    red = workbook.add_format({'font_color': 'red'})
+    pass
+    # workbook = xlsxwriter.Workbook(data_dir+'/node{}.xlsx'.format(node_id)) 
+    # worksheet = workbook.add_worksheet()
+    # bold = workbook.add_format({'bold': True})
+    # red = workbook.add_format({'font_color': 'red'})
 
-    worksheet.write(0, 0, 'Round', bold)
-    peers = {}
-    for snapshot in snapshots:
-        node = snapshot.nodes[node_id]
-        out_conn = node.out_conn
-        out = ''
-        r = snapshot.round
-        worksheet.write(r+1, 0, str(r))
-        nodes = snapshot.nodes.copy()
-        nodes.update(snapshot.sybils)
-        for s in node.scores:
-            if s not in peers:
-                peers[s] = len(peers) + 1
-                peer = nodes[s] 
-                if peer in out_conn:
-                    out = ' out'
-                else:
-                    out =  ''
-                if peer.role == NodeType.PUB: 
-                    worksheet.write(0, peers[s], str(s)+' (PUB)' + out, bold)
-                if peer.role == NodeType.LURK: 
-                    worksheet.write(0, peers[s], str(s)+' (LURK)'+ out, bold)
-                if peer.role == NodeType.SYBIL: 
-                    worksheet.write(0, peers[s], str(s)+' (SYBIL)', bold)
-            if s in node.mesh:
-                worksheet.write(r+1, peers[s], node.scores[s], red)
-            else:
-                worksheet.write(r+1, peers[s], node.scores[s])
-    workbook.close()
+    # worksheet.write(0, 0, 'Round', bold)
+    # peers = {}
+    # for snapshot in snapshots:
+        # node = snapshot.nodes[node_id]
+        # out_conn = node.out_conn
+        # out = ''
+        # r = snapshot.round
+        # worksheet.write(r+1, 0, str(r))
+        # nodes = snapshot.nodes.copy()
+        # nodes.update(snapshot.sybils)
+        # for s in node.scores:
+            # if s not in peers:
+                # peers[s] = len(peers) + 1
+                # peer = nodes[s] 
+                # if peer in out_conn:
+                    # out = ' out'
+                # else:
+                    # out =  ''
+                # if peer.role == NodeType.PUB: 
+                    # worksheet.write(0, peers[s], str(s)+' (PUB)' + out, bold)
+                # if peer.role == NodeType.LURK: 
+                    # worksheet.write(0, peers[s], str(s)+' (LURK)'+ out, bold)
+                # if peer.role == NodeType.SYBIL: 
+                    # worksheet.write(0, peers[s], str(s)+' (SYBIL)', bold)
+            # if s in node.mesh:
+                # worksheet.write(r+1, peers[s], node.scores[s], red)
+            # else:
+                # worksheet.write(r+1, peers[s], node.scores[s])
+    # workbook.close()
 
 def dump_graph(snapshot):
     # dump the graph state of a snapshot to a file
