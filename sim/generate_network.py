@@ -4,6 +4,7 @@ import random
 from config import NodeType
 from config import MAX_BANDWIDTH 
 from collections import namedtuple
+from collections import defaultdict
 
 NetBandwidth = namedtuple('NetBandwidth', ['up_bd', 'down_bd'])
 
@@ -29,14 +30,19 @@ def parse_nodes(json_file):
 
 def get_rand_node(n):
     return random.randint(0, n-1)
+def get_rand_choice(peers):
+    return random.choice(peers)
 
-def gen_random_peers(is_cold_boot, init_peer_num, my_id, num_honest, num_sybil):
+def gen_random_peers(is_cold_boot, init_peer_num, my_id, num_honest, num_sybil, honest_node_topic):
     peers = set()
+    sybils = [i for i in range(num_honest, num_honest+num_sybil)]
     while 1:
         if not is_cold_boot:
-            v = get_rand_node(num_honest)
+            v = get_rand_choice(honest_node_topic)
+            # v = get_rand_node(num_honest)
         else:
-            v = get_rand_node(num_honest+ num_sybil)
+            v = get_rand_choice(honest_node_topic+sybils)
+            # v = get_rand_node(num_honest+ num_sybil)
         if v not in peers and v != my_id:
             peers.add(v)
             if len(peers) == init_peer_num:
@@ -49,20 +55,32 @@ def generate_network(
         n_pub, n_lurk, n_sybil, 
         down_mean, down_std, 
         up_mean, up_std,
-        interval):
+        interval, 
+        num_topic):
     nodes = []
+
+    topic_honest_nodes = defaultdict(list)
+    for i in range(n_pub + n_lurk):
+        topic_honest_nodes[i%num_topic].append(i)
+
     i = 0
     for _ in range(n_pub):
         downB = random.gauss(down_mean, down_std)
         upB = random.gauss(up_mean, up_std)
-        peers = gen_random_peers(is_cold_boot, init_peer_num, i, n_pub+n_lurk, n_sybil)
+        topics = [i % num_topic]
+        topic_peers = {}
+        for topic in topics:
+            peers = gen_random_peers(is_cold_boot, init_peer_num, i, n_pub+n_lurk, n_sybil, 
+                    topic_honest_nodes[topic])
+            topic_peers[topic] = peers
         node = {
             "id": i,
             "role": 0, #NodeType.PUB,
-            "known": peers,
+            "known": topic_peers,
             "downB": downB,
             "upB": upB,
-            "interval": interval
+            "interval": interval,
+            "topics": topics
         }
         nodes.append(node)
         i += 1
@@ -71,14 +89,19 @@ def generate_network(
     for _ in range(n_lurk):
         downB = random.gauss(down_mean, down_std)
         upB = random.gauss(up_mean, up_std)
-        peers = gen_random_peers(is_cold_boot, init_peer_num, i, n_pub+n_lurk, n_sybil)
+        topics = [i % num_topic]
+        topic_peers = {}
+        for topic in topics:
+            topic_peers[topic]= gen_random_peers(is_cold_boot, init_peer_num, i, n_pub+n_lurk, n_sybil,
+                topic_honest_nodes[topic])
         node = {
             "id": i,
             "role": 1, #NodeType.LURK,
-            "known": peers,
+            "known": topic_peers,
             "downB": downB,
             "upB": upB,
-            "interval": 0 
+            "interval": 0,
+            "topics": topics
         }
         nodes.append(node)
         i += 1
@@ -94,7 +117,8 @@ def generate_network(
             "known": known,
             "downB": MAX_BANDWIDTH,
             "upB": MAX_BANDWIDTH,
-            "interval": 0 # manually attack
+            "interval": 0, # manually attack
+            "topic": -1  # any topic
         }
         nodes.append(node)
         i += 1
@@ -109,7 +133,8 @@ def generate_network(
             "DOWN_STD": down_std,
             "UP_MEAN": up_mean,
             "UP_STD": up_std,
-            "INTERVAL": interval
+            "INTERVAL": interval,
+            "NUM_TOPIC": num_topic
         }
     setup = {"summery": summery, "nodes": nodes}
     print(json.dumps(setup, indent=4))
