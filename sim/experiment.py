@@ -157,7 +157,9 @@ class Experiment:
                         u["interval"],
                         u["known"],
                         self.heartbeat_period,
-                        u["topics"]
+                        u["topics"],
+                        u["x"],
+                        u["y"]
                     )
                 else:
                     self.sybils[u_id] = Sybil(
@@ -166,7 +168,9 @@ class Experiment:
                         u["interval"],
                         u["known"],
                         self.heartbeat_period,
-                        u["topics"]
+                        u["topics"],
+                        u["x"],
+                        u["y"]
                     )
             else: 
                 print('Error. config file duplicate id')

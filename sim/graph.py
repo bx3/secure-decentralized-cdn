@@ -29,12 +29,14 @@ class Peer:
         self.counter = PeerScoreCounter()
 
 class Node:
-    def __init__(self, role, u, interval, topic_peers, heartbeat_period, topics):
+    def __init__(self, role, u, interval, topic_peers, heartbeat_period, topics, x, y):
         self.id = u # my id
         self.role = role
         self.topics = topics
         self.topic_peers = topic_peers
         self.actors = {} # key is topic, value is actor
+        self.x = x
+        self.y = y
         self.in_msgs = []
         for topic in topics:
             peers = topic_peers[str(topic)] # json convert key into string

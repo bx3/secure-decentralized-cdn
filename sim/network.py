@@ -8,6 +8,8 @@ from messages import MessageType
 from messages import AdvRate
 from generate_network import parse_nodes 
 from generate_network import NetBandwidth
+from generate_network import Point 
+
 
 NetworkState = namedtuple('NetworkState', ['links', 'uplinks', 'downlinks', 'freeze_count'])
 LinkSnapshot = namedtuple('LinkSnapshot', ['num_msg', 'num_trans', 'finished_trans', 'up_remains', 'down_remains'])
@@ -15,7 +17,7 @@ LinkSnapshot = namedtuple('LinkSnapshot', ['num_msg', 'num_trans', 'finished_tra
 # direcdtion sensitive
 # assume network has infinite buffer volume
 class LinkState:
-    def __init__(self, up_bd, down_bd, msg):
+    def __init__(self, up_bd, down_bd, msg, up_point, down_point):
         self.up_limit = up_bd
         self.down_limit = down_bd
         self.up_remain = msg.length 
@@ -25,6 +27,10 @@ class LinkState:
         self.curr_msg_byte_transferred = 0 # count if curr msg finishes
         self.finished_trans = 0
         self.frozen = 0 # count down to be active
+        self.up_point = up_point
+        self.down_point = down_point
+        self.prop_delay = int(math.sqrt((up_point[0]-down_point[0])**2 + (up_point[1]-down_point[1])**2)/SPEED_OF_LIGHT *1000 ) #ms
+        self.elapsed = 0  # ms
 
     def get_link_snapshot(self):
         return LinkSnapshot(
@@ -37,7 +43,6 @@ class LinkState:
 
     def add_freeze_count(self, count):
         self.frozen += count
-
 
     def get_num_msg(self):
         return len(self.msgs)
@@ -97,7 +102,7 @@ class LinkState:
 
         return completed
 
-    # NOT USED, SEPARATED INTO up and down, old comment up_bd, down_bd are used in current round
+    # SEPARATED INTO up and down, old comment up_bd, down_bd are used in current round
     def update(self, up_bd, down_bd):
         if self.frozen > 0:
             self.frozen -= 1
@@ -105,10 +110,17 @@ class LinkState:
 
         completed = []
         uploaded_byte = up_bd * SEC_PER_ROUND
+        if self.up_remain < uploaded_byte:
+            uploaded_byte = self.up_remain
         downloaded_byte = down_bd * SEC_PER_ROUND
 
         self.up_remain -= uploaded_byte
         self.down_remain += uploaded_byte
+        # wait until prop delay is added
+        if self.elapsed < self.prop_delay:
+            self.elapsed += SEC_PER_ROUND*1000 # ms per round
+            return []
+             
         self.down_remain -= downloaded_byte
 
         self.byte_transferred += downloaded_byte
@@ -128,11 +140,11 @@ class Controller:
         self.msg_uplink = {} # key is node id, value is a set of dst that uses this up link
         self.msg_downlink = {} # same as above
 
-    def feed_link(self, msg, up_bd_lim, down_bd_lim):
+    def feed_link(self, msg, up_bd_lim, down_bd_lim, up_point, down_point):
         mtype, mid, src, dst, _, length, payload, _, _ = msg
         pair = (src, dst)
         if pair not in self.links:
-            self.links[pair] = LinkState(up_bd_lim, down_bd_lim, msg)
+            self.links[pair] = LinkState(up_bd_lim, down_bd_lim, msg, up_point, down_point)
             self.mark_msg_to_link(src, dst)
         else:
             link = self.links[pair]
@@ -289,6 +301,7 @@ class Network:
         self.seqno = 0 # sequence number for msgs derived from network i.e. heartbeat
         self.controller = Controller()
         self.netband = {}
+        self.points = {}
         self.load_network(setup_json)
         self.freeze_count = 0
         self.num_push_msg = 0
@@ -307,6 +320,7 @@ class Network:
             if u_id not in self.netband:
                 # self.queues[u_id] = [] 
                 self.netband[u_id] = NetBandwidth(u["upB"], u["downB"])
+                self.points[u_id] = Point(u["x"], u["y"])
             else:
                 print('Error. Duplicate id in setup json')
                 sys.exit(0)
@@ -342,7 +356,12 @@ class Network:
         for msg in msgs:
             self.num_push_msg += 1
             _, _, src, dst, _, length, _, _, _ = msg
-            self.controller.feed_link(msg, self.netband[src].up_bd, self.netband[dst].down_bd)
+            self.controller.feed_link(
+                    msg, 
+                    self.netband[src].up_bd, 
+                    self.netband[dst].down_bd, 
+                    self.points[src],
+                    self.points[dst])
             # r = self.get_delay_to_msg(src, dst, length, curr_r)
             # self.enqueue_msg(msg, r, dst)
 

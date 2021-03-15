@@ -227,10 +227,10 @@ def plot_topic_latency(topic_latencies, topic_trans_gen, topics):
             print('topic', i, 'node', u, gen_time, lat)
             axs[i].bar(list(gen_time), list(lat), label='node '+str(u))
             axs[i].set_title('topic ' + str(i) , fontsize='small')
-            axs[i].set_xlabel('round', fontsize='small')
             axs[i].set_ylabel('latency (round)', fontsize='small')
             axs[i].legend(loc='upper right')
             k += 1
+    axs[-1].set_xlabel('round', fontsize='small')
         # num_link_patch = mpatches.Patch(color='green', label='num link')
         # num_trans_link_patch = mpatches.Patch(color='blue', label='num link with trans')
         # axs[i].legend(handles=[num_link_patch, num_trans_link_patch])   

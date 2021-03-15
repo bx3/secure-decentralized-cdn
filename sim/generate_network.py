@@ -7,6 +7,8 @@ from collections import namedtuple
 from collections import defaultdict
 
 NetBandwidth = namedtuple('NetBandwidth', ['up_bd', 'down_bd'])
+Point = namedtuple('Point', ['x', 'y'])
+
 
 def load_bandwidth(self, setup_json):
     nodes = parse_nodes(setup_json)
@@ -56,7 +58,8 @@ def generate_network(
         down_mean, down_std, 
         up_mean, up_std,
         interval, 
-        num_topic):
+        num_topic, 
+        length):
     nodes = []
 
     topic_honest_nodes = defaultdict(list)
@@ -68,6 +71,7 @@ def generate_network(
         downB = random.gauss(down_mean, down_std)
         upB = random.gauss(up_mean, up_std)
         topics = [i % num_topic]
+        x, y = random.randint(0, length), random.randint(0, length)
         topic_peers = {}
         for topic in topics:
             peers = gen_random_peers(is_cold_boot, init_peer_num, i, n_pub+n_lurk, n_sybil, 
@@ -80,7 +84,9 @@ def generate_network(
             "downB": downB,
             "upB": upB,
             "interval": interval,
-            "topics": topics
+            "topics": topics,
+            "x": x,
+            "y": y
         }
         nodes.append(node)
         i += 1
@@ -90,6 +96,7 @@ def generate_network(
         downB = random.gauss(down_mean, down_std)
         upB = random.gauss(up_mean, up_std)
         topics = [i % num_topic]
+        x, y = random.randint(0, length), random.randint(0, length)
         topic_peers = {}
         for topic in topics:
             topic_peers[topic]= gen_random_peers(is_cold_boot, init_peer_num, i, n_pub+n_lurk, n_sybil,
@@ -101,7 +108,10 @@ def generate_network(
             "downB": downB,
             "upB": upB,
             "interval": 0,
-            "topics": topics
+            "topics": topics,
+            "x": x,
+            "y": y
+
         }
         nodes.append(node)
         i += 1
@@ -111,6 +121,7 @@ def generate_network(
     for _ in range(n_sybil):
         known = all_peers.copy()
         known.remove(i)
+        x, y = random.randint(0, length), random.randint(0, length)
         node = {
             "id": i,
             "role": 2, #NodeType.SYBIL,
@@ -118,7 +129,9 @@ def generate_network(
             "downB": MAX_BANDWIDTH,
             "upB": MAX_BANDWIDTH,
             "interval": 0, # manually attack
-            "topic": -1  # any topic
+            "topic": -1,  # any topic
+            "x": x,
+            "y": y
         }
         nodes.append(node)
         i += 1
@@ -134,7 +147,8 @@ def generate_network(
             "UP_MEAN": up_mean,
             "UP_STD": up_std,
             "INTERVAL": interval,
-            "NUM_TOPIC": num_topic
+            "NUM_TOPIC": num_topic,
+            "POINT_RANGE": length
         }
     setup = {"summery": summery, "nodes": nodes}
     print(json.dumps(setup, indent=4))

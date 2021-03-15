@@ -10,6 +10,8 @@ ATTACK_DEG = 100
 # time round
 RTT = 100 # millisecond
 
+SPEED_OF_LIGHT = 300000 #Km if point in 2D of 20000 Km, longest delay is 100ms
+
 NODE_PROPCESS = 5 # millisecond
 
 MILLISEC_PER_ROUND = NODE_PROPCESS

@@ -12,10 +12,10 @@ random.seed(31)
 if len(sys.argv) < 2:
     print("require subcommand: run, gen-network\n")
     print("run json epoch[int]")
-    print("gen-network num_pub[int] num_lurk[int] num_sybil[int] is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] interval_sec[float] num_topic[int]") 
+    print("gen-network num_pub_per_topic[int] num_lurk[int] num_sybil[int] is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] interval_sec[float] num_topic[int] area_length[int]") 
     print("demo json")
     print('exmaple: ./testbed.py run topo/one_pub.json 100')
-    print('exmaple: ./testbed.py gen-network 10 90 0 n 20 1000000 0 1000000 0 0.5 2 > ten_pub.json')
+    print('exmaple: ./testbed.py gen-network 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000> topo/two_topic_2_pub.json')
     print('exmaple: ./testbed.py demo topo/one_pub.json')
     sys.exit()
 
@@ -35,6 +35,7 @@ if cmd == "gen-network":
     up_std = float(sys.argv[10])
     prob = float(sys.argv[11])
     num_topic = int(sys.argv[12])
+    area_length = int(sys.argv[13])
     gn.generate_network(
         is_cold_boot,
         init_peer_num,
@@ -42,7 +43,8 @@ if cmd == "gen-network":
         down_mean, down_std,
         up_mean, up_std,
         prob,
-        num_topic
+        num_topic,
+        area_length
         )
 elif cmd == "run":
     if len(sys.argv) < 3:
