@@ -13,9 +13,14 @@ if len(sys.argv) < 2:
     print("require subcommand: run, gen-network\n")
     print("run json epoch[int]")
     print("gen-network num_pub_per_topic[int] num_lurk[int] num_sybil[int] is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] interval_sec[float] num_topic[int] area_length[int]") 
+    print("gen-network-real-data is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] interval_sec[float]  geocluster-data[str]")
+    print("gen-spec num_topic[int] num_pub_per_topic[int] num_lurk[int] num_sybil[int]")
     print("demo json")
     print('exmaple: ./testbed.py run topo/one_pub.json 100')
     print('exmaple: ./testbed.py gen-network 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000> topo/two_topic_2_pub.json')
+    print('exmaple: ./testbed.py gen-network-special 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000 y > topo/two_topic_2_pub.json')
+    print('exmaple: ./testbed.py gen-network-real-data input/spec.json n 20 1000000 0 1000000 0 0.1 geocluster.json  > topo/real_data.json')
+    print('exmaple: ./testbed.py gen-spec 4 1 4 0 2')
     print('exmaple: ./testbed.py demo topo/one_pub.json')
     sys.exit()
 
@@ -206,6 +211,70 @@ elif cmd == "plot":
     # analyzer.plot_eclipse_ratio_list(eclipsed_ratio_hist, filename, dirname, len(targets))
     # analyzer.print_target_info(snapshots[-1], targets)
     # analyzer.print_sybils(snapshots[-1])
+elif cmd == "gen-network-special":
+    if len(sys.argv) < 14:
+        print("require arguments")
+        sys.exit(0)
+    n_pub = int(sys.argv[2])
+    n_lurk = int(sys.argv[3])
+    n_sybil = int(sys.argv[4])
+    is_cold_boot = sys.argv[5] == 'y'
+    init_peer_num =  int(sys.argv[6])
+    down_mean = float(sys.argv[7])
+    down_std = float(sys.argv[8])
+    up_mean = float(sys.argv[9])
+    up_std = float(sys.argv[10])
+    prob = float(sys.argv[11])
+    num_topic = int(sys.argv[12])
+    area_length = int(sys.argv[13])
+    grid_point = sys.argv[14] == 'y'
+
+    gn.gen_two_topic_network(
+        is_cold_boot,
+        init_peer_num,
+        n_pub, n_lurk, n_sybil,
+        down_mean, down_std,
+        up_mean, up_std,
+        prob,
+        num_topic,
+        area_length,
+        grid_point
+        )
+elif cmd== "gen-network-real-data":
+    if len(sys.argv) < 10:
+        print("require arguments")
+        sys.exit(0)
+    specs_json = sys.argv[2]
+    is_cold_boot = sys.argv[3] == 'y'
+    init_peer_num =  int(sys.argv[4])
+    down_mean = float(sys.argv[6])
+    down_std = float(sys.argv[6])
+    up_mean = float(sys.argv[7])
+    up_std = float(sys.argv[8])
+    prob = float(sys.argv[9])
+    geocluster_file = sys.argv[10]
+
+    gn.gen_real_data_network(
+        is_cold_boot,
+        init_peer_num,
+        specs_json,
+        down_mean, down_std,
+        up_mean, up_std,
+        prob,
+        geocluster_file   
+        )
+
+elif cmd == 'gen-specs':
+    if len(sys.argv) < 6:
+        print("require arguments")
+        sys.exit(0)
+
+    n_topic = int(sys.argv[2])
+    n_pub_per_topic = int(sys.argv[3])
+    n_lurk_per_topic = int(sys.argv[4])
+    n_sybil_per_topic = int(sys.argv[5])
+    n_non_cluster = int(sys.argv[6])
+    gn.gen_specs(n_topic, n_pub_per_topic, n_lurk_per_topic, n_sybil_per_topic, n_non_cluster)
 else:
     print('Require a valid subcommand', cmd)
 

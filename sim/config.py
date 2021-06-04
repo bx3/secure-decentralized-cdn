@@ -58,12 +58,24 @@ GOSSIP_FACTOR = 0.25
 
 assert(N_PUB + N_LURK > OVERLAY_D)
 
-class NodeType(Enum):
-    PUB = 0
-    LURK = 1
-    SYBIL = 2
-    BOOTSTRAP = 3 
+class NodeType(str, Enum):
+    PUB = 'PUB'
+    LURK = 'LURK'
+    SYBIL = 'SYBIL'
+    IND = 'IND' # INDIFFERENT
 
+def get_nodetype(i):
+    if i == 0 or i == 'PUB':
+        return NodeType.PUB
+    elif i == 0 or i == 'LURK':
+        return NodeType.LURK
+    elif i == 0 or i == 'SYBIL':
+        return NodeType.SYBIL
+    elif i == 0 or i == 'IND':
+        return NodeType.IND
+    else:
+        print('Error. Unknown Node Type')
+        sys.exit(1)
 
 DECAY_INTERVAL = 10 # rounds
 RETENSION_PERIOD = 100 # rounds how long peer's score is removed

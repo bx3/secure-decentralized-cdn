@@ -112,7 +112,7 @@ class LinkState:
         uploaded_byte = up_bd * SEC_PER_ROUND
         if self.up_remain < uploaded_byte:
             uploaded_byte = self.up_remain
-        downloaded_byte = down_bd * SEC_PER_ROUND
+        
 
         self.up_remain -= uploaded_byte
         self.down_remain += uploaded_byte
@@ -120,6 +120,10 @@ class LinkState:
         if self.elapsed < self.prop_delay:
             self.elapsed += SEC_PER_ROUND*1000 # ms per round
             return []
+        else:
+            t = SEC_PER_ROUND*1000 + self.elapsed - self.prop_delay
+            self.elapsed = self.prop_delay
+            downloaded_byte = down_bd * t/1000
              
         self.down_remain -= downloaded_byte
 
@@ -156,7 +160,7 @@ class Controller:
         num_up_msg = len(self.msg_uplink[src])
         up_bd_per_node = float(link.up_limit) / num_up_msg
         num_down_msg = len(self.msg_downlink[dst])
-        down_bd_per_node = float(link.down_limit) / num_up_msg
+        down_bd_per_node = float(link.down_limit) / num_down_msg
         return up_bd_per_node, down_bd_per_node
 
     # get bandwidth for this link depending on 

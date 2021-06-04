@@ -29,9 +29,8 @@ class Peer:
         self.counter = PeerScoreCounter()
 
 class Node:
-    def __init__(self, role, u, interval, topic_peers, heartbeat_period, topics, x, y):
+    def __init__(self, topic_roles, u, interval, topic_peers, heartbeat_period, topics, x, y):
         self.id = u # my id
-        self.role = role
         self.topics = topics
         self.topic_peers = topic_peers
         self.actors = {} # key is topic, value is actor
@@ -39,7 +38,10 @@ class Node:
         self.y = y
         self.in_msgs = []
         for topic in topics:
-            peers = topic_peers[str(topic)] # json convert key into string
+            peers = topic_peers[topic] 
+            role = get_nodetype(topic_roles[topic])
+            print(self.id , role)
+
             self.actors[topic] = TopicActor(role, u, interval, peers, heartbeat_period, topic)
 
     def get_all_mesh(self):

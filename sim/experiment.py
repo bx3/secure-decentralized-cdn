@@ -103,6 +103,8 @@ class Experiment:
         for dst, msgs in dst_msgs.items():
             # honest 
             if dst in self.nodes:
+                # if dst == 50:
+                    # print(msgs)
                 self.nodes[dst].insert_msg_buff(msgs)
             else:
                 self.sybils[dst].insert_msg_buff(msgs)
@@ -118,8 +120,9 @@ class Experiment:
     
     def honest_nodes_handle_msgs(self, curr_r):
         for u, node in self.nodes.items():
-            if node.role != NodeType.SYBIL:
-                node.process_msgs(curr_r)
+            # TODO assume all are honest
+            #if node.role != NodeType.SYBIL:
+            node.process_msgs(curr_r)
 
     def sybil_nodes_handle_msgs(self, curr_r):
         self.adversary.handle_msgs(curr_r)
@@ -150,28 +153,16 @@ class Experiment:
         for u in nodes:
             u_id = u["id"]
             if u_id not in self.nodes:
-                if u["role"] != 2: # 2 is sybil
-                    self.nodes[u_id] = Node(
-                        NodeType(u["role"]), 
-                        u_id,
-                        u["interval"],
-                        u["known"],
-                        self.heartbeat_period,
-                        u["topics"],
-                        u["x"],
-                        u["y"]
-                    )
-                else:
-                    self.sybils[u_id] = Sybil(
-                        NodeType(u["role"]), 
-                        u_id,
-                        u["interval"],
-                        u["known"],
-                        self.heartbeat_period,
-                        u["topics"],
-                        u["x"],
-                        u["y"]
-                    )
+                self.nodes[u_id] = Node(
+                    u["roles"],
+                    u_id,
+                    u["interval"],
+                    u["known"],
+                    self.heartbeat_period,
+                    u["topics"],
+                    u["x"],
+                    u["y"]
+                )
             else: 
                 print('Error. config file duplicate id')
                 sys.exit(0)
