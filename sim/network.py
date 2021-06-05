@@ -29,7 +29,7 @@ class LinkState:
         self.frozen = 0 # count down to be active
         self.up_point = up_point
         self.down_point = down_point
-        self.prop_delay = int(math.sqrt((up_point[0]-down_point[0])**2 + (up_point[1]-down_point[1])**2)/SPEED_OF_LIGHT *1000 ) #ms
+        self.prop_delay = 0 # int(math.sqrt((up_point[0]-down_point[0])**2 + (up_point[1]-down_point[1])**2)/SPEED_OF_LIGHT *1000 ) #ms
         self.elapsed = 0  # ms
 
     def get_link_snapshot(self):

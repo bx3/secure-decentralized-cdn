@@ -1,10 +1,6 @@
 from enum import Enum
 
 # network
-N_PUB = 90
-N_LURK = 10
-N_DEGREE = 20
-N_SYBIL = 10
 ATTACK_DEG = 100
 
 # time round
@@ -55,8 +51,6 @@ ADV_SPECIAL_SEQNO = -1
 
 TIMEOUT = 4 # round
 GOSSIP_FACTOR = 0.25
-
-assert(N_PUB + N_LURK > OVERLAY_D)
 
 class NodeType(str, Enum):
     PUB = 'PUB'

@@ -83,7 +83,6 @@ class Experiment:
             # if network has too many messages, stop
             # if not self.network.is_uplink_congested(u):
             msgs = node.send_msgs() 
-            # print(u, 'send', len(msgs), 'msgs')
             self.network.push_msgs(msgs, curr_r)
 
     def attack_management(self, r, network, targets):
@@ -103,8 +102,6 @@ class Experiment:
         for dst, msgs in dst_msgs.items():
             # honest 
             if dst in self.nodes:
-                # if dst == 50:
-                    # print(msgs)
                 self.nodes[dst].insert_msg_buff(msgs)
             else:
                 self.sybils[dst].insert_msg_buff(msgs)
@@ -151,17 +148,30 @@ class Experiment:
     def load_nodes(self, setup_file):
         nodes = gn.parse_nodes(setup_file)
         for u in nodes:
-            u_id = u["id"]
+            u_id = int(u["id"])
+            topics = []
+            roles = {}
+            known = {}
+            for t in u["topics"]:
+                topics.append(get_topic_type(t))
+            for t, role in u["roles"].items():
+                roles[get_topic_type(t)] = role
+            for t, ks in u["known"].items():
+                known[get_topic_type(t)] = ks
+            interval = float(u["interval"])
+            x = float(u["x"])
+            y = float(u["y"])
+            print(u_id, topics) 
             if u_id not in self.nodes:
                 self.nodes[u_id] = Node(
-                    u["roles"],
+                    roles,
                     u_id,
-                    u["interval"],
-                    u["known"],
+                    interval,
+                    known,
                     self.heartbeat_period,
-                    u["topics"],
-                    u["x"],
-                    u["y"]
+                    topics,
+                    x,
+                    y
                 )
             else: 
                 print('Error. config file duplicate id')

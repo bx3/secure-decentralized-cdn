@@ -63,9 +63,8 @@ elif cmd == "run":
     snapshots = gossipsub.start(epoch)
 
     # analyzer.plot_eclipse_attack(snapshots, [1])
-    topics = [i for i in range(summery['NUM_TOPIC'])]
+    topics = [gn.get_topic_type(t) for t in summery['TOPICS']]
     analyzer.plot_topics_latency(snapshots, topics)
-    print("start analyze")
     # analyze_network(snapshots)
     # analyze_snapshot(snapshots)
     # dump_graph(snapshots[50])
@@ -247,7 +246,7 @@ elif cmd== "gen-network-real-data":
     specs_json = sys.argv[2]
     is_cold_boot = sys.argv[3] == 'y'
     init_peer_num =  int(sys.argv[4])
-    down_mean = float(sys.argv[6])
+    down_mean = float(sys.argv[5])
     down_std = float(sys.argv[6])
     up_mean = float(sys.argv[7])
     up_std = float(sys.argv[8])

@@ -180,7 +180,10 @@ def trans_latency_90(snapshots, topic):
     for tid, latencies in trans_latency.items():
         lats = [l for a, l in latencies]
         sorted_lat = sorted(lats)
-        lat90 = sorted_lat[int(len(sorted_lat)*9.0/10.0) - 1]
+        if len(sorted_lat) >= 10:
+            lat90 = sorted_lat[int(round(len(sorted_lat)*9.0/10.0)) - 1]
+        else:
+            lat90 = sorted_lat[int(len(sorted_lat)*9.0/10.0)]
         trans_90_lat[tid] = lat90
     return trans_90_lat, trans_gen_r
 
@@ -188,18 +191,18 @@ def trans_latency_90(snapshots, topic):
 def plot_topics_latency(snapshots, topics):
     topic_latencies = {}
     topic_trans_gen = {}
+    max_epoch = len(snapshots)
     for topic in topics:
         components, honest_components = get_components(snapshots, topic)
-        # plot_components(axs[0], honest_components)
         topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90(snapshots, topic)
-    plot_topic_latency(topic_latencies, topic_trans_gen, topics)
+    plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch)
 
 def get_cmap(n, name='hsv'):
     '''Returns a function that maps each index in 0, 1, ..., n-1 to a distinct
     RGB color; the keyword argument name must be a standard mpl colormap name.'''
     return plt.cm.get_cmap(name, n)
 
-def plot_topic_latency(topic_latencies, topic_trans_gen, topics):
+def plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch):
     fig, axs = plt.subplots(len(topics))
     topics_data = {}
     publisers = set()
@@ -209,31 +212,36 @@ def plot_topic_latency(topic_latencies, topic_trans_gen, topics):
         nodes_data = defaultdict(list)
         for tid, lat in latencies.items():
             gen_time = trans_gen[tid]
-            node_id, trans_id = tid
-            nodes_data[node_id].append((gen_time, lat))
-            publisers.add(node_id)
+            first_node_id, trans_id = tid
+            nodes_data[first_node_id].append((gen_time, lat))
+            publisers.add(first_node_id)
         topics_data[topic] = nodes_data
 
     node_color = {}
     for p in publisers:
         node_color[p] = np.random.rand(3,)
-    print(node_color) 
+
     for i in range(len(topics)):
         topic = topics[i]
         nodes_data = topics_data[topic] 
         k = 0
         for u in nodes_data:
             gen_time, lat = zip(*nodes_data[u])
-            print('topic', i, 'node', u, gen_time, lat)
+            print(topic , 'node', u, gen_time, lat)
             axs[i].bar(list(gen_time), list(lat), label='node '+str(u))
             axs[i].set_title('topic ' + str(i) , fontsize='small')
             axs[i].set_ylabel('latency (round)', fontsize='small')
             axs[i].legend(loc='upper right')
-            k += 1
+            axs[i].set_xlim([0, max_epoch-1])
+
+            # if i != len(topics)-1:
+                # axs[i].set_xticks([])
+            # k += 1
     axs[-1].set_xlabel('round', fontsize='small')
         # num_link_patch = mpatches.Patch(color='green', label='num link')
         # num_trans_link_patch = mpatches.Patch(color='blue', label='num link with trans')
         # axs[i].legend(handles=[num_link_patch, num_trans_link_patch])   
+    plt.tight_layout()
     plt.show()
 
 

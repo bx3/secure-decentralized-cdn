@@ -550,6 +550,7 @@ def gen_real_data_network(
         topic_peers = {}
         for topic in topics:
             nodes = topics_nodes[topic].get_all_nodes() 
+            nodes.remove(node_id)
             np.random.shuffle(nodes)
             selected_init_peers = nodes[:init_peer_num]
             topic_peers[topic] = [nodeId_outId_map[j] for j in selected_init_peers]
@@ -571,7 +572,19 @@ def gen_real_data_network(
         }
         out_nodes.append(node)
 
+    topics_nodes_summary = {}
+    num_node_check = set() 
+    topics =  []
+    for topic, tn in topics_nodes.items():
+        topics.append(topic)
+        nodes = tn.get_all_nodes()
+        num_node_check = num_node_check.union(set(nodes))
+        topics_nodes_summary[topic] = [nodeId_outId_map[j] for j in nodes]
+    assert(len(num_node_check) == len(nodeId_outId_map))
+
+
     summery = {
+            "NUM_NODE": len(nodeId_outId_map),
             "COLD_BOOT": is_cold_boot, 
             "INIT_PEER_NUM": init_peer_num,
             "DOWN_MEAN": down_mean,
@@ -580,6 +593,9 @@ def gen_real_data_network(
             "UP_STD": up_std,
             "INTERVAL": interval,
             "NUM_TOPIC": num_topic,
+            "TOPICS": topics,
+            "topics_nodes": topics_nodes_summary,
+            "spec": specs
         }
     setup = {"summery": summery, "nodes": out_nodes}
     print(json.dumps(setup, indent=4))

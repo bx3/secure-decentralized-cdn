@@ -6,6 +6,9 @@ from collections import defaultdict
 from messages import *
 from scores import PeerScoreCounter
 import sys
+from generate_network import Topic
+from generate_network import get_topic_type
+
 
 State = namedtuple('State', [
     'role', 
@@ -20,7 +23,7 @@ State = namedtuple('State', [
     'gen_trans_num', 
     'out_conn']
     )
-TransId = namedtuple('TransId', ['src', 'no'])
+TransId = namedtuple('TransId', ['src', 'no']) # src is the node who first creates the trans
 ScoreRecord = namedtuple('ScoreRecord', ['p1', 'p2', 'p3a', 'p3b', 'p4', 'p5', 'p6'])
 
 class Peer:
@@ -39,9 +42,7 @@ class Node:
         self.in_msgs = []
         for topic in topics:
             peers = topic_peers[topic] 
-            role = get_nodetype(topic_roles[topic])
-            print(self.id , role)
-
+            role = topic_roles[topic]
             self.actors[topic] = TopicActor(role, u, interval, peers, heartbeat_period, topic)
 
     def get_all_mesh(self):
@@ -63,20 +64,24 @@ class Node:
 
     def insert_msg_buff(self, msgs):
         self.in_msgs += msgs # append
+        # print(self.id, self.in_msgs)
 
     def process_msgs(self, curr_r):
-        #print("node", self.id, "process_msgs", len(self.in_msgs))
+        # print("node", self.id, "process_msgs", len(self.in_msgs))
         actor_msgs = defaultdict(list)
         while len(self.in_msgs) > 0:
             msg = self.in_msgs.pop(0)
             mtype, _, src, dst, _, _, payload, topic, send_r = msg
             if topic not in self.actors:
                 print('Warning. Receive other topic msg')
+                sys.exit(1)
+
             actor_msgs[topic].append(msg)
-    
+        # print(self.id, actor_msgs)
         for topic in self.topics:
             actor = self.actors[topic]
             in_msgs = actor_msgs[topic]
+            # print(self.id, topic, in_msgs)
             actor.process_msgs(in_msgs, curr_r)
 
     def get_states(self):
@@ -118,7 +123,7 @@ class TopicActor:
         self.gen_trans_num = 0
 
         self.round_trans_ids = set() # keep track of msgs used for analysis
-        self.trans_record = {}  # key is trans_id, value is (recv r, send r) 
+        self.trans_record = {}  # key is trans_id, value is (recv r, send r) send_r is the first born time
         self.last_heartbeat = -1
 
     def run_scores_background(self, curr_r):
@@ -139,11 +144,8 @@ class TopicActor:
             mtype, _, src, dst, _, _, payload, topic, send_r = msg
             assert self.id == dst
             if mtype == MessageType.GRAFT:
-                # if self.id == 0:
-                    # print(self.id, 'recv GRAFT from', src)
                 self.proc_GRAFT(msg, r)
             elif mtype == MessageType.PRUNE:
-                # print(self.id, 'recv PRUNE from', src)
                 self.proc_PRUNE(msg)
             elif mtype == MessageType.LEAVE:
                 self.proc_LEAVE(msg) 
@@ -160,6 +162,7 @@ class TopicActor:
             elif mtype == MessageType.TRANS:
                 # if self.id == 0 or self.id == 1 or self.id == 68:
                     # print(self.id, 'recv trans', payload, 'from', src)
+                # print(self.id, "proc_TRANS", msg)
                 self.proc_TRANS(msg, r)
             else:
                 self.scores[src].update_p4() # Invalid msgs
@@ -191,9 +194,10 @@ class TopicActor:
 
         if random.random() < self.gen_prob:
             self.gen_trans_num += 1
-            print('*****', self.id, 'gen a message *******')
+            trans_id = TransId(self.id, self.gen_trans_num)
+            print('***** at epoch {r:<5}: node {node_id:>5} create a {topic:>5} msg *******'.format( 
+                r=r, node_id=self.id, topic=self.topic))
             for peer in self.mesh:
-                trans_id = TransId(self.id, self.gen_trans_num)
                 msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id, r)
                 # print(self.id, 'generate trans', trans_id, 'to', peer)
                 self.out_msgs.append(msg)
@@ -204,6 +208,7 @@ class TopicActor:
         # print(self.mesh)
         # in case the peer has not been accepted by the mesh, but relay msg
         if src not in self.mesh:
+            print('Warning. src not from mesh')
             return 
 
         self.scores[src].add_msg_delivery()
@@ -218,8 +223,9 @@ class TopicActor:
             # push it to other peers in mesh if not encountered
             for peer in self.mesh:
                 if peer != src:
-                    msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id, r)
-                    # print(self.id, 'forward', trans_id, 'to', peer)
+                    msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id, send_r)
+                    # print('***** node', self.id, 'of', self.topic, 'at e:', r, 'forward a', self.topic, 'msg born at', send_r, ' *******')
+                    # print(self.id, 'forward', self.topic, trans_id, 'to', peer)
                     self.out_msgs.append(msg)
             self.trans_record[trans_id] = (r, send_r)
 
