@@ -1,22 +1,26 @@
-from config import * 
-from messages import MessageType
-from messages import Message
-from messages import AdvRate
+from sim.config import *
+from sim.messages import MessageType
+from sim.messages import Message
+from sim.messages import AdvRate
 from collections import namedtuple
 from collections import defaultdict
 from enum import Enum
 import random
 
+
 class AttackType(Enum):
     MSG_BOMB = 0
     UNDERCOVER = 1
 
+
 class AttackAngle(Enum):
     FirstMsgDelivery = 0
 
+
 BombRequest = namedtuple('BombRequest', ['node', 'time'])  # node, for how long, time must be 1
-FreezeRequest = namedtuple('FreezeRequest', ['link', 'time']) # link, for how long, time must be 1
-AttackChannel = namedtuple('AttackChannel', ['node', 'method']) # link, for how long, time must be 1
+FreezeRequest = namedtuple('FreezeRequest', ['link', 'time'])  # link, for how long, time must be 1
+AttackChannel = namedtuple('AttackChannel', ['node', 'method'])  # link, for how long, time must be 1
+
 
 # each sybils uses notes to conduct attack
 class Notes:
@@ -47,21 +51,25 @@ class Notes:
 
     def add_bomb_request(self, t, r):
         self.bomb_request.append(BombRequest(t, r))
+
     def add_freeze_request(self, l, r):
         self.freeze_request.append(FreezeRequest(l, r))
+
     def release_channel(self, c):
         self.channels.remove(c)
+
     def add_channel(self, c):
         self.channels.append(c)
+
 
 class Adversary:
     def __init__(self, sybils):
         self.state = None
 
-        self.grafted = {} # key is honest node, values is a list of grafted sybil id 
-        self.sybils = sybils # key is node id, value is 
+        self.grafted = {}  # key is honest node, values is a list of grafted sybil id
+        self.sybils = sybils  # key is node id, value is
 
-        self.targets = set() # for eclipse
+        self.targets = set()  # for eclipse
 
         self.undercovers = []
         self.msg_bombs = []
@@ -71,7 +79,7 @@ class Adversary:
         self.num_undercover = OVERLAY_DHI
         # assert(len(sybils) >= self.num_undercover)
         self.num_bomb = len(sybils) - self.num_undercover
-        self.net_freezer = 0 # total number freezed round in all links
+        self.net_freezer = 0  # total number froze round in all links
 
         self.assign_roles_to_sybils()
         self.avail_channel = []

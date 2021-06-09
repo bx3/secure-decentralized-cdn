@@ -1,0 +1,72 @@
+{
+    "summery": {
+        "PUB": 1,
+        "LURK": 2,
+        "SYBIL": 0,
+        "COLD_BOOT": false,
+        "INIT_PEER_NUM": 2,
+        "DOWN_MEAN": 1000000.0,
+        "DOWN_STD": 0.0,
+        "UP_MEAN": 1000000.0,
+        "UP_STD": 0.0,
+        "INTERVAL": 0.1,
+        "NUM_TOPIC": 1,
+        "POINT_RANGE": 20000
+    },
+    "nodes": [
+        {
+            "id": 0,
+            "role": 0,
+            "known": {
+                "0": [
+                    1,
+                    2
+                ]
+            },
+            "downB": 1000000.0,
+            "upB": 1000000.0,
+            "interval": 0.1,
+            "topics": [
+                0
+            ],
+            "x": 12872,
+            "y": 4615
+        },
+        {
+            "id": 1,
+            "role": 1,
+            "known": {
+                "0": [
+                    0,
+                    2
+                ]
+            },
+            "downB": 1000000.0,
+            "upB": 1000000.0,
+            "interval": 0,
+            "topics": [
+                0
+            ],
+            "x": 19434,
+            "y": 3051
+        },
+        {
+            "id": 2,
+            "role": 1,
+            "known": {
+                "0": [
+                    0,
+                    1
+                ]
+            },
+            "downB": 1000000.0,
+            "upB": 1000000.0,
+            "interval": 0,
+            "topics": [
+                0
+            ],
+            "x": 7108,
+            "y": 13642
+        }
+    ]
+}

@@ -1,25 +1,27 @@
-from config import *
+from sim.config import *
+
+
 class PeerScoreCounter:
     def __init__(self):
-        self.r = 0 # the lastest update round
+        self.r = 0  # the latest update round
         self.W1 = TIME_IN_MESH_WEIGHT
-        self.P1 = 0 # time in mesh
+        self.P1 = 0  # time in mesh
 
         self.W2 = FIRST_MESSAGE_DELIVERIES_WEIGHT
-        self.P2 = 0 # num first message from 
+        self.P2 = 0  # num first message from
 
         self.msg_delivery = 0
         self.W3a = MESH_MESSAGE_DELIVERIES_WEIGHT
-        self.P3a = 0 # num message failure rate, need to a window
+        self.P3a = 0  # num message failure rate, need to a window
 
         self.W3b = MESH_FAILURE_PENALTY_WEIGHT
-        self.P3b = 0 # num mesh message deliver failure
+        self.P3b = 0  # num mesh message deliver failure
         self.W4 = INVALID_MESSAGE_DELIVERIES_WEIGHT
-        self.P4 = 0 # num invalid message uncapped
+        self.P4 = 0  # num invalid message uncapped
         self.W5 = TOPIC_WEIGHT
-        self.P5 = 0 # application specific
+        self.P5 = 0  # application specific
         self.W6 = -0.1
-        self.P6 = 0 # node id collocation
+        self.P6 = 0  # node id collocation
 
         self.score = 0
 

@@ -1,22 +1,40 @@
-from graph import *
-from network import Network
-from messages import *
-from config import *
-from graph import State
-from sybil import Sybil
-import generate_network as gn
-import attacks
+from sim.graph import *
+from sim.network import Network
+from sim.messages import *
+from sim.config import *
+from sim.graph import State
+from sim.sybil import Sybil
+import sim.generate_network as gn
+import sim.attacks as attacks
 import json
 import sys
 import time
 
+
 class Snapshot:
     def __init__(self):
         self.round = 0
-        self.nodes = {} # key:node id value: node state
+        self.nodes = {}  # key: node id; value: node state from node.get_states()
         self.sybils = {}
         self.all_nodes = {}
-        self.network = None # message queue in for each node
+        self.network = None  # message queue in for each node
+
+    def __repr__(self):
+        print("round", self.round)
+        print("nodes: ")
+        for node_id, node_state in self.nodes.items():
+            print("\t node_id:", node_id)
+            for topic, state in node_state.items():
+                print("\t topic:", topic)
+                print("\t state:", state)
+            print()
+
+        # print("sybils", self.sybils)
+        # print("all_nodes", self.all_nodes)
+        # print("network", self.network)
+        print()
+        return ""
+
 
 class Experiment:
     def __init__(self, setup_json, heartbeat):
@@ -25,11 +43,11 @@ class Experiment:
         self.sybils = {}
         self.all_nodes = {}
 
-        self.network = Network(setup_json)
-        self.heartbeat_period = heartbeat
+        self.network = Network(setup_json)  # sets up net with all nodes' bandwidth, coordinates and links
+        self.heartbeat_period = heartbeat  # .2 sec
     
-        # load both nodes and sybils nodes
-        self.load_nodes(setup_json) 
+        # load both nodes and sybil nodes
+        self.load_nodes(setup_json)  # get each node's info and put it in self.nodes
         self.setup_mesh()
 
         self.adversary = attacks.Adversary(self.sybils)
@@ -45,17 +63,17 @@ class Experiment:
         for r in range(start_round, start_round+epoch):
             # debug
             # if r % HEARTBEAT == 0:
-                # print("****\t\theartbeat generated", r, HEARTBEAT)
+            #    print("****\t\theartbeat generated", r, HEARTBEAT)
 
             # start attack
             # self.attack_management(r, self.network, targets)
 
             # network store messages from honest nodes
             # self.push_sybil_msgs(r)
-            self.push_honest_msgs(r)
+            self.push_honest_msgs(r)  # push msg into net
 
             # if r > 0:
-                # self.attack_freeze_network(r)
+            #    self.attack_freeze_network(r)
             
             # network deliver msgs
             self.deliver_msgs(r)
@@ -67,8 +85,8 @@ class Experiment:
             # self.sybil_use_fast_internet(r) 
 
             # take snapshot
-            curr_shots.append(self.take_snapshot(r))
-            #print("round", r, "finish using ", time.time()-start)
+            curr_shots.append(self.take_snapshot(r))  # look at network state for each iter
+            # print("round", r, "finish using ", time.time()-start)
         return curr_shots
 
     def push_sybil_msgs(self, r):
@@ -78,8 +96,8 @@ class Experiment:
             self.network.push_msgs(msgs, r)
 
     # honest nodes push msg to network
-    def push_honest_msgs(self, curr_r):
-        for u, node in self.nodes.items():
+    def push_honest_msgs(self, curr_r):  # curr_r is an int between [0, epoch)
+        for u, node in self.nodes.items():  # u = node id, node = node and its state
             # if network has too many messages, stop
             # if not self.network.is_uplink_congested(u):
             msgs = node.send_msgs() 
@@ -87,7 +105,7 @@ class Experiment:
             self.network.push_msgs(msgs, curr_r)
 
     def attack_management(self, r, network, targets):
-        self.adversary.add_targets(targets) # some hack
+        self.adversary.add_targets(targets)  # some hack
         adv_msgs = []
         if r > 0: 
             adv_msgs = self.adversary.eclipse_target(r, self.snapshots, self.network) 
@@ -98,17 +116,20 @@ class Experiment:
             self.adversary.handle_freeze_requests(r, self.snapshots[-1], self.network)
                  
     def deliver_msgs(self, curr_r):
-        num_delivered_msg =  0
+        num_delivered_msg = 0
         dst_msgs = self.network.update(True)
+        print("dst_msgs", dst_msgs)
         for dst, msgs in dst_msgs.items():
             # honest 
             if dst in self.nodes:
+                # print("\n\ncurr_r", curr_r)
                 self.nodes[dst].insert_msg_buff(msgs)
             else:
                 self.sybils[dst].insert_msg_buff(msgs)
             num_delivered_msg += len(msgs)
 
     def all_nodes_handle_msgs(self, curr_r):
+        print("all_nodes_handle_msgs")
         # node process messages
         for u, node in self.nodes.items():
             if node.role != NodeType.SYBIL:
@@ -126,7 +147,6 @@ class Experiment:
 
     def sybil_use_fast_internet(self, curr_r):
         self.adversary.sybil_nodes_redistribute_msgs(curr_r)
-
 
     def take_snapshot(self, r):
         snapshot = Snapshot()
@@ -150,7 +170,7 @@ class Experiment:
         for u in nodes:
             u_id = u["id"]
             if u_id not in self.nodes:
-                if u["role"] != 2: # 2 is sybil
+                if u["role"] != 2:  # 2 is sybil
                     self.nodes[u_id] = Node(
                         NodeType(u["role"]), 
                         u_id,
@@ -176,10 +196,10 @@ class Experiment:
                 print('Error. config file duplicate id')
                 sys.exit(0)
 
-    # modified sybils node does not get in mesh, is system is warm
+    # modified sybils node does not get in mesh, if system is warm
     def setup_mesh(self):
         # self.all_nodes = {**(self.nodes), **(self.sybils)}
-        mesh = {} # key is node, value is mesh nodes
+        mesh = {}  # key is node, value is mesh nodes
         # num_conn_1 = 0
         for u, node in self.nodes.items():
             for topic, actor in node.actors.items():
@@ -187,10 +207,10 @@ class Experiment:
                 known_peers = actor.peers.copy()
                 known_peers = list(known_peers)
                 random.shuffle(known_peers)
-                chosen = known_peers[:num_out]
-                for v in chosen:
+                chosen = known_peers[:num_out]  # chooses first num_out peers
+                for v in chosen:  # v = u = node id
                     # if v == 1:
-                        # num_conn_1 += 1
+                    #    num_conn_1 += 1
                     node.setup_peer(v, Direction.Outgoing, 0, topic)
                     self.nodes[v].setup_peer(u, Direction.Incoming, 0, topic) 
 

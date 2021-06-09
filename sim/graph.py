@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-from config import *
+from sim.config import *
 import random
 from collections import namedtuple
 from collections import defaultdict
-from messages import *
-from scores import PeerScoreCounter
+from sim.messages import *
+from sim.scores import PeerScoreCounter
 import sys
 
 State = namedtuple('State', [
@@ -23,23 +23,27 @@ State = namedtuple('State', [
 TransId = namedtuple('TransId', ['src', 'no'])
 ScoreRecord = namedtuple('ScoreRecord', ['p1', 'p2', 'p3a', 'p3b', 'p4', 'p5', 'p6'])
 
+
 class Peer:
-    def __init__(self, direciton):
+    def __init__(self, direction):
         self.direction = direction
         self.counter = PeerScoreCounter()
 
+
 class Node:
     def __init__(self, role, u, interval, topic_peers, heartbeat_period, topics, x, y):
-        self.id = u # my id
+        self.id = u  # my id
         self.role = role
         self.topics = topics
-        self.topic_peers = topic_peers
-        self.actors = {} # key is topic, value is actor
+        self.topic_peers = topic_peers  # topic peers: "known" dict in json; key=topic, value=peers
+        self.actors = {}  # key is topic, value is actor
         self.x = x
         self.y = y
         self.in_msgs = []
+
+        # each node has multiple topics => 1:1 for topic:actor
         for topic in topics:
-            peers = topic_peers[str(topic)] # json convert key into string
+            peers = topic_peers[str(topic)]  # json convert key into string
             self.actors[topic] = TopicActor(role, u, interval, peers, heartbeat_period, topic)
 
     def get_all_mesh(self):
@@ -60,10 +64,13 @@ class Node:
         return out_msgs
 
     def insert_msg_buff(self, msgs):
-        self.in_msgs += msgs # append
+        self.in_msgs += msgs  # append
+        print("\nnode insert_msg_buff")
+        print("self.in_msgs", self.in_msgs)
+        print("msgs", msgs)
 
     def process_msgs(self, curr_r):
-        #print("node", self.id, "process_msgs", len(self.in_msgs))
+        # print("node", self.id, "process_msgs", len(self.in_msgs))
         actor_msgs = defaultdict(list)
         while len(self.in_msgs) > 0:
             msg = self.in_msgs.pop(0)
@@ -74,7 +81,8 @@ class Node:
     
         for topic in self.topics:
             actor = self.actors[topic]
-            in_msgs = actor_msgs[topic]
+            in_msgs = actor_msgs[topic]  # actor_msgs = {key: topic; value: list of in_msgs}
+            print("node ", self.id, "process_msgs's in_msgs", in_msgs)
             actor.process_msgs(in_msgs, curr_r)
 
     def get_states(self):
@@ -84,26 +92,28 @@ class Node:
             states[topic] = state
         return states
 
+
 # assume there is only one topic then
 # generic data structure usable by all protocols
 class TopicActor:
     def __init__(self, role, u, interval, peers, heartbeat_period, topic):
-        self.id = u # my id
+        self.id = u  # my id
         self.topic = topic
         self.role = role
-        self.conn = set() # lazy push
-        self.mesh = {} # mesh push
+        self.conn = set()  # lazy push: nodes that are NOT PART of the mesh comm. w/ mesh-connected nodes through gossip
+        self.mesh = {}  # mesh push
 
-        self.peers = set(peers) # known peers
-        self.out_msgs = [] # msg to push in the next round
+        self.peers = set(peers)  # known peers
+        self.out_msgs = []  # msg to push in the next round
         # self.in_msgs = []
-        self.D_scores = 2 #
-        self.scores = {} # all peer score, key is peer, value is PeerScoreCounter
+        self.D_scores = 2  #
+        self.scores = {}  # all peer score, key is peer, value is PeerScoreCounter
         self.seqno = 0
-        self.D = OVERLAY_D # curr in local mesh degree: incoming + outgoing
-        self.D_out = 2 # num outgoing connections in the mesh; D_out < OVERLAY_DLO and D_out < D/2
+        self.D = OVERLAY_D  # curr in local mesh degree: incoming + outgoing; target degree btwn D_low & D_high
+        self.D_out = 2  # num outgoing connections in the mesh; D_out < OVERLAY_DLO and D_out < D/2
+        # wat abt D_low and D_high? Also, D_out is adjusted during mesh maintenance so D_out < D_low & D_out <= D/2
 
-        self.init_peers_scores()
+        self.init_peers_scores()  # sets self.scores: key = peer and value = default PeerScoreCounter()
 
         if interval == 0:
             self.gen_prob = 0
@@ -115,7 +125,7 @@ class TopicActor:
         self.heartbeat_period = heartbeat_period
         self.gen_trans_num = 0
 
-        self.round_trans_ids = set() # keep track of msgs used for analysis
+        self.round_trans_ids = set()  # keep track of msgs used for analysis
         self.trans_record = {}  # key is trans_id, value is (recv r, send r) 
         self.last_heartbeat = -1
 
@@ -131,10 +141,13 @@ class TopicActor:
         self.run_scores_background(r)
         self.round_trans_ids.clear()
         in_msgs = msgs.copy()
-        # handle msgs 
+        # handle msgs
+        # print()
+        # print("len(in_msgs)", len(in_msgs))
         while len(in_msgs) > 0:
             msg = in_msgs.pop(0)
             mtype, _, src, dst, _, _, payload, topic, send_r = msg
+
             assert self.id == dst
             if mtype == MessageType.GRAFT:
                 # if self.id == 0:
@@ -156,11 +169,14 @@ class TopicActor:
                     self.last_heartbeat = r
                     self.proc_Heartbeat(msg, r)
             elif mtype == MessageType.TRANS:
+                # print("\tTRANS msgs:")
+                # print("\tsend_r:", send_r)
+                # print("\trecv_r:", r)
                 # if self.id == 0 or self.id == 1 or self.id == 68:
                     # print(self.id, 'recv trans', payload, 'from', src)
                 self.proc_TRANS(msg, r)
             else:
-                self.scores[src].update_p4() # Invalid msgs
+                self.scores[src].update_p4()  # Invalid msgs
         
         if self.role == NodeType.PUB:
             # if r<1:
@@ -208,8 +224,8 @@ class TopicActor:
 
         # if not seen msg before
         # if mid not in self.msg_ids:
-
-        if trans_id not in self.trans_record:
+        print("trans_id", trans_id)
+        if trans_id not in self.trans_record:  # only adding 1st occurrences of TransIds' transfer records w/in a node
             self.msg_ids.add(mid)
             self.scores[src].update_p2()
             self.round_trans_ids.add(trans_id)
@@ -219,9 +235,12 @@ class TopicActor:
                     msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id, r)
                     # print(self.id, 'forward', trans_id, 'to', peer)
                     self.out_msgs.append(msg)
+            print("\t\ttrans_id", trans_id)
+            print("\t\tputting received and sent r into trans_record")
+            print("\t\tsend_r:", send_r)
+            print("\t\tr: ", r)
             self.trans_record[trans_id] = (r, send_r)
 
-    
     def init_peers_scores(self):
         for p in self.peers:
             self.scores[p] = PeerScoreCounter()
@@ -230,7 +249,6 @@ class TopicActor:
         msg = Message(mtype, self.seqno, self.id, peer, AdvRate.NotSybil, msg_len, payload, self.topic, r)
         self.seqno += 1
         return msg
-
 
     # TODO later out_msgs might not be empties instanteously due to upload bandwidth
     def send_msgs(self):
@@ -295,7 +313,7 @@ class TopicActor:
             # get pos score peers
             mesh_peers_scores = self.get_pos_score_mesh_peers()
             mesh_peers_scores.sort(key=lambda tup: tup[1], reverse=True)
-            mesh_peers =  [i for i,j in mesh_peers_scores]
+            mesh_peers = [i for i, j in mesh_peers_scores]
             
             # shuffle  TODO
             # mesh_peers
@@ -475,10 +493,9 @@ class TopicActor:
             # msg = Message(MessageType.GRAFT, 0, self.id, rand_honest, False, CTRL_MSG_LEN, None)
             # self.out_msgs.append(msg)
 
-
     # return State, remember to return a copy
     def get_states(self):
-        scores_value = {} # key is peer
+        scores_value = {}  # key is peer
 
         scores_decompose = {}
         for peer in self.scores:
@@ -499,7 +516,6 @@ class TopicActor:
         for peer, direction in self.mesh.items():
             if direction == Direction.Outgoing:
                 out_conn.append(peer)
-        
 
         return State(
                 self.role, 

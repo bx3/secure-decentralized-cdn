@@ -2,11 +2,14 @@
 import sys
 import os
 import datetime
-from experiment import Experiment
-from config import *
-import analyzer
-import generate_network as gn
+from sim.experiment import Experiment
+from sim.config import *
+import sim.analyzer as analyzer
+import sim.generate_network as gn
+from sim.generate_network import *
 import random
+import math
+
 random.seed(31)
 
 if len(sys.argv) < 2:
@@ -14,9 +17,9 @@ if len(sys.argv) < 2:
     print("run json epoch[int]")
     print("gen-network num_pub_per_topic[int] num_lurk[int] num_sybil[int] is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] interval_sec[float] num_topic[int] area_length[int]") 
     print("demo json")
-    print('exmaple: ./testbed.py run topo/one_pub.json 100')
-    print('exmaple: ./testbed.py gen-network 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000> topo/two_topic_2_pub.json')
-    print('exmaple: ./testbed.py demo topo/one_pub.json')
+    print('example: ./testbed.py run topo/one_pub.json 100')
+    print('example: ./testbed.py gen-network 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000> topo/two_topic_2_pub.json')
+    print('example: ./testbed.py demo topo/one_pub.json')
     sys.exit()
 
 cmd = sys.argv[1]
@@ -28,7 +31,7 @@ if cmd == "gen-network":
     n_lurk = int(sys.argv[3])
     n_sybil = int(sys.argv[4])
     is_cold_boot = sys.argv[5] == 'y'
-    init_peer_num =  int(sys.argv[6])
+    init_peer_num = int(sys.argv[6])
     down_mean = float(sys.argv[7])
     down_std = float(sys.argv[8])
     up_mean = float(sys.argv[9])
@@ -46,13 +49,25 @@ if cmd == "gen-network":
         num_topic,
         area_length
         )
+    node_attr_setter = SetStandardNodeAttributes(
+                                is_cold_boot,
+                                init_peer_num,
+                                n_pub, n_lurk, n_sybil,
+                                down_mean, down_std,
+                                up_mean, up_std,
+                                prob,
+                                num_topic,
+                                area_length)
+    network_generator = StandardGenerateNetwork(node_attr_setter)
+    network_generator.generate_network()
+
 elif cmd == "run":
     if len(sys.argv) < 3:
         print("require arguments")
         sys.exit(0)
     setup = sys.argv[2]
     epoch = int(sys.argv[3])
-    summery = gn.parse_summery(setup)
+    summery = gn.parse_summery(setup)  # gets summery parameters in a list
     heartbeat = HEARTBEAT
     gossipsub = Experiment(setup, heartbeat)
     snapshots = gossipsub.start(epoch)
@@ -71,7 +86,7 @@ elif cmd == "demo":
         print("require arguments")
         sys.exit(0)
     setup = sys.argv[2]
-    heartbeat = HEARTBEAT
+    heartbeat = HEARTBEAT  # in config.py, HEARTBEAT=.2 sec
     gossipsub = Experiment(setup, heartbeat)
 
     if not os.path.isdir('data'):
@@ -127,7 +142,7 @@ elif cmd == "term":
     snapshots = []
     history_targets = set()
     while True:
-        rounds = HEARTBEAT/4 # input("Enter simulation rounds, such as '20'. Type 'exit' to exit: ")
+        rounds = HEARTBEAT/4  # input("Enter simulation rounds, such as '20'. Type 'exit' to exit: ")
         if rounds == 'exit':
             break
 
@@ -141,7 +156,7 @@ elif cmd == "term":
         total_rounds += int(rounds)
 
         # os.system('clear')
-        if len(targets) >0:
+        if len(targets) > 0:
             analyzer.print_target_info(snapshots[-1], targets)
             analyzer.print_sybils(snapshots[-1], gossipsub.adversary)
         else:
@@ -196,7 +211,6 @@ elif cmd == "plot":
     if len(eclipsed) < len(targets):
         print("not eclipsed after 2000 rounds")
 
-        
     # print(gossipsub.adversary.num_freeze_count)
 
     # analyzer.analyze_freezer(snapshots)
@@ -206,6 +220,60 @@ elif cmd == "plot":
     # analyzer.plot_eclipse_ratio_list(eclipsed_ratio_hist, filename, dirname, len(targets))
     # analyzer.print_target_info(snapshots[-1], targets)
     # analyzer.print_sybils(snapshots[-1])
+
+# patrick's code convert bitnodes.json to our json format
+elif cmd == "convert":
+    proportion_pub = float(sys.argv[2])
+    proportion_lurk = float(sys.argv[3])
+    proportion_sybil = float(sys.argv[4])
+
+    total = proportion_pub + proportion_lurk + proportion_sybil
+    if not(proportion_pub >= 0 and proportion_lurk >= 0 and proportion_sybil >= 0):
+        print("proportions of pub, lurk, and sybil nodes need to be POSITIVE NUMBERS!!!")
+        sys.exit(0)
+    elif not(math.isclose(total, 1.0)):
+        print("proportions of pub, lurk, and sybil nodes DON'T add up to ONE!!!")
+        sys.exit(0)
+
+    is_cold_boot = sys.argv[5] == 'y'
+    init_peer_num = int(sys.argv[6])
+    down_mean = float(sys.argv[7])
+    down_std = float(sys.argv[8])
+    up_mean = float(sys.argv[9])
+    up_std = float(sys.argv[10])
+    interval = float(sys.argv[11])
+    # num_topic = int(sys.argv[12])
+    # area_length = int(sys.argv[13])
+
+    bit_nodes_setup = sys.argv[12]
+    # inputs can be percentage/fraction pub, lurk, and sybil nodes (have to add to 1)
+
+    bit_nodes_info = gn.parse_nodes_with_encoding(bit_nodes_setup)
+
+    bit_node_attr_coll = BitNodeAttributesCollection(bit_nodes_info)
+    nodes_id_and_attrs = bit_node_attr_coll.get_bit_nodes_and_attrs()
+    total_continents = bit_node_attr_coll.get_total_continents()
+
+    total_nodes = len(nodes_id_and_attrs)
+
+    node_attr_setter = SetBitNodeAttributes(
+        is_cold_boot,
+        init_peer_num,
+        round(proportion_pub * total_nodes), round(proportion_lurk * total_nodes),
+        round(proportion_sybil * total_nodes),
+        down_mean, down_std,
+        up_mean, up_std,
+        interval,
+        nodes_id_and_attrs,
+        total_continents
+    )
+    network_generator = BitNodesGenerateNetwork(node_attr_setter, nodes_id_and_attrs, total_continents)
+    network_generator.generate_network()
+
+elif cmd == "parse":
+    essential_bit_node_json = sys.argv[2]
+    essential_bit_node_info = gn.parse_nodes(essential_bit_node_json)
+    print(essential_bit_node_info)
 else:
     print('Require a valid subcommand', cmd)
 

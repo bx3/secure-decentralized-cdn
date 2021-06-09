@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import networkx as nx
+import sim.network as nx
 # import xlsxwriter 
 from collections import defaultdict
-from config import *
-from messages import Direction
-from messages import MessageType
+from sim.config import *
+from sim.messages import Direction, MessageType
+# from messages import MessageType
 import numpy as np
 import sys
+
 
 def get_degrees(snapshots):
     # get the mean/max/min degrees of all nodes in all snapshots
@@ -153,45 +154,57 @@ def throughput_90(snapshots):
         acc_gen_msg_hist.append(acc_gen_msg)
     return acc_recv_msg_hist, acc_gen_msg_hist
 
+
 def trans_latency_90(snapshots, topic):
-    trans_latency = defaultdict(list) # key is transid, value is a list of latency
+    trans_latency = defaultdict(list)  # key is transfer id, value is a list of tuples (node id, latency)
     snapshot = snapshots[-1]
-    nodes = snapshot.nodes
-    trans_gen_r = {}
+    print("last snapshot: ", snapshot)
+    nodes = snapshot.nodes  # key: node id; value: node state
+    trans_gen_r = {}  # key: transfer id; value: transfer id's send round (r)
+
+    # diff nodes have same TransIds but diff latencies => put TransIds' lats into trans_latency dict: key =
     for u, node in nodes.items():
         if topic in node:
             actor = node[topic] 
             for tid, tp in actor.trans_record.items():
-                lat = tp[0] - tp[1] # 
+                lat = tp[0] - tp[1]  # tp = (receive r, send r); r = round?
                 trans_latency[tid].append((u, lat))
                 trans_gen_r[tid] = tp[1]
 
     num_honest_node, honest_nodes = get_num_honest(snapshots[-1], topic)
     # for tid, latencies in trans_latency.items():
-        # if len(latencies) != num_honest_node -1:
-            # print('topic', topic, 'Some node does not recv', tid)
-            # recved = [a for a,l in latencies] + [tid[0]] #  + sender
-            # missing = honest_nodes.difference(set(recved)) 
-            # print(missing)
-            # sys.exit(1)
+    #     if len(latencies) != num_honest_node -1:
+    #         print('topic', topic, 'Some node does not recv', tid)
+    #         recved = [a for a,l in latencies] + [tid[0]] #  + sender
+    #         missing = honest_nodes.difference(set(recved))
+    #         print(missing)
+    #         sys.exit(1)
 
-    # find 90 percentile
+    # find 90th percentile latency out of each TransIds' latencies
     trans_90_lat = {}
     for tid, latencies in trans_latency.items():
-        lats = [l for a, l in latencies]
-        sorted_lat = sorted(lats)
-        lat90 = sorted_lat[int(len(sorted_lat)*9.0/10.0) - 1]
+        lats = [l for _, l in latencies]
+        sorted_lat = sorted(lats)  # small to large #s
+        print(sorted_lat)
+        lat90 = sorted_lat[int(len(sorted_lat)*9.0/10.0) - 1]  # THIS IS WHERE THE PROBLEM IS!!!!!
         trans_90_lat[tid] = lat90
+        print(trans_90_lat, lat90)
     return trans_90_lat, trans_gen_r
 
 
 def plot_topics_latency(snapshots, topics):
     topic_latencies = {}
     topic_trans_gen = {}
+    # print("snapshots: ", snapshots)
     for topic in topics:
         components, honest_components = get_components(snapshots, topic)
         # plot_components(axs[0], honest_components)
         topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90(snapshots, topic)
+
+    print("topic_latencies", topic_latencies)
+    print("topic_trans_gen", topic_trans_gen)
+    print("topics", topics)
+
     plot_topic_latency(topic_latencies, topic_trans_gen, topics)
 
 def get_cmap(n, name='hsv'):
@@ -199,10 +212,11 @@ def get_cmap(n, name='hsv'):
     RGB color; the keyword argument name must be a standard mpl colormap name.'''
     return plt.cm.get_cmap(name, n)
 
+
 def plot_topic_latency(topic_latencies, topic_trans_gen, topics):
     fig, axs = plt.subplots(len(topics))
     topics_data = {}
-    publisers = set()
+    publishers = set()
     for topic in topics:
         trans_gen = topic_trans_gen[topic]
         latencies = topic_latencies[topic]
@@ -211,26 +225,53 @@ def plot_topic_latency(topic_latencies, topic_trans_gen, topics):
             gen_time = trans_gen[tid]
             node_id, trans_id = tid
             nodes_data[node_id].append((gen_time, lat))
-            publisers.add(node_id)
+            publishers.add(node_id)
         topics_data[topic] = nodes_data
 
     node_color = {}
-    for p in publisers:
+    for p in publishers:
         node_color[p] = np.random.rand(3,)
-    print(node_color) 
-    for i in range(len(topics)):
-        topic = topics[i]
-        nodes_data = topics_data[topic] 
-        k = 0
-        for u in nodes_data:
-            gen_time, lat = zip(*nodes_data[u])
-            print('topic', i, 'node', u, gen_time, lat)
-            axs[i].bar(list(gen_time), list(lat), label='node '+str(u))
-            axs[i].set_title('topic ' + str(i) , fontsize='small')
-            axs[i].set_ylabel('latency (round)', fontsize='small')
-            axs[i].legend(loc='upper right')
-            k += 1
-    axs[-1].set_xlabel('round', fontsize='small')
+
+    if type(axs) is np.ndarray:
+
+        for i in range(len(topics)):
+            topic = topics[i]
+            nodes_data = topics_data[topic]
+            k = 0
+            for u in nodes_data:
+                print("*nodes_data[u]", *nodes_data[u])  # *: collects all the positional arguments in a tuple
+                temp = list(zip(*nodes_data[u]))
+                print("zip(*nodes_data[u])", temp)
+
+                gen_time, lat = zip(*nodes_data[u])  # * in front of variables:
+                print('topic', i, 'node', u, gen_time, lat)
+                axs[i].bar(list(gen_time), list(lat), label='node '+str(u))
+                axs[i].set_title('topic ' + str(i), fontsize='small')
+                axs[i].set_ylabel('latency (round)', fontsize='small')
+                axs[i].legend(loc='upper right')
+                k += 1
+
+        axs[-1].set_xlabel('round', fontsize='small')
+
+    else:
+        for i in range(len(topics)):
+            topic = topics[i]
+            nodes_data = topics_data[topic]
+            k = 0
+            for u in nodes_data:
+                print("*nodes_data[u]", *nodes_data[u])  # *: collects all the positional arguments in a tuple
+                temp = list(zip(*nodes_data[u]))
+                print("zip(*nodes_data[u])", temp)
+
+                gen_time, lat = zip(*nodes_data[u])
+                print('topic', i, 'node', u, gen_time, lat)
+                axs.bar(list(gen_time), list(lat), label='node ' + str(u))
+                axs.set_title('topic ' + str(i), fontsize='small')
+                axs.set_ylabel('latency (round)', fontsize='small')
+                axs.legend(loc='upper right')
+                k += 1
+
+        axs.set_xlabel('round', fontsize='small')
         # num_link_patch = mpatches.Patch(color='green', label='num link')
         # num_trans_link_patch = mpatches.Patch(color='blue', label='num link with trans')
         # axs[i].legend(handles=[num_link_patch, num_trans_link_patch])   

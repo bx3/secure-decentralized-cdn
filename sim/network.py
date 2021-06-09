@@ -1,20 +1,21 @@
-from config import *
+from sim.config import *
 from collections import namedtuple
 import math
 import sys
 import random
-from messages import Message
-from messages import MessageType
-from messages import AdvRate
-from generate_network import parse_nodes 
-from generate_network import NetBandwidth
-from generate_network import Point 
+from sim.messages import Message
+from sim.messages import MessageType
+from sim.messages import AdvRate
+from sim.generate_network import parse_nodes
+from sim.generate_network import NetBandwidth
+from sim.generate_network import Point
 
 
 NetworkState = namedtuple('NetworkState', ['links', 'uplinks', 'downlinks', 'freeze_count'])
 LinkSnapshot = namedtuple('LinkSnapshot', ['num_msg', 'num_trans', 'finished_trans', 'up_remains', 'down_remains'])
 
-# direcdtion sensitive
+
+# direction sensitive
 # assume network has infinite buffer volume
 class LinkState:
     def __init__(self, up_bd, down_bd, msg, up_point, down_point):
@@ -23,14 +24,26 @@ class LinkState:
         self.up_remain = msg.length 
         self.down_remain = 0
         self.msgs = [msg]
-        self.byte_transferred = msg.length # link statistics
-        self.curr_msg_byte_transferred = 0 # count if curr msg finishes
+        self.byte_transferred = msg.length  # link statistics
+        self.curr_msg_byte_transferred = 0  # count if curr msg finishes
         self.finished_trans = 0
-        self.frozen = 0 # count down to be active
+        self.frozen = 0  # count down to be active
         self.up_point = up_point
         self.down_point = down_point
-        self.prop_delay = int(math.sqrt((up_point[0]-down_point[0])**2 + (up_point[1]-down_point[1])**2)/SPEED_OF_LIGHT *1000 ) #ms
+
+        # prop_delay = distance / (signal speed = speed of light)
+        self.prop_delay = int(math.sqrt((up_point[0]-down_point[0])**2 +
+                                        (up_point[1]-down_point[1])**2)/SPEED_OF_LIGHT * 1000)  # ms
+        # self.prop_delay = int(math.sqrt((up_point[0] - down_point[0]) ** 2 +
+        #                                 (up_point[1] - down_point[1]) ** 2) / (SPEED_OF_LIGHT * 1000))  # ms
+        print("prop_delay", self.prop_delay)
         self.elapsed = 0  # ms
+
+    def __repr__(self):
+        print("self.prop_delay: ", self.prop_delay)
+        print("LinkState's self.elapsed: ", self.elapsed)
+        print("LinkState's self.msgs: ", self.msgs)
+        return ""
 
     def get_link_snapshot(self):
         return LinkSnapshot(
@@ -116,11 +129,12 @@ class LinkState:
 
         self.up_remain -= uploaded_byte
         self.down_remain += uploaded_byte
+
         # wait until prop delay is added
         if self.elapsed < self.prop_delay:
-            self.elapsed += SEC_PER_ROUND*1000 # ms per round
+            self.elapsed += SEC_PER_ROUND*1000  # ms per round
             return []
-             
+
         self.down_remain -= downloaded_byte
 
         self.byte_transferred += downloaded_byte
@@ -132,13 +146,15 @@ class LinkState:
             if msg.mType == MessageType.TRANS:
                 self.finished_trans += 1
             completed.append(msg)
+
         return completed
+
 
 class Controller:
     def __init__(self):
-        self.links = {} # key is node pair, value is state
-        self.msg_uplink = {} # key is node id, value is a set of dst that uses this up link
-        self.msg_downlink = {} # same as above
+        self.links = {}  # key is node pair, value is state
+        self.msg_uplink = {}  # key is node id, value is a set of dst that uses this up link
+        self.msg_downlink = {}  # same as above
 
     def feed_link(self, msg, up_bd_lim, down_bd_lim, up_point, down_point):
         mtype, mid, src, dst, _, length, payload, _, _ = msg
@@ -156,7 +172,7 @@ class Controller:
         num_up_msg = len(self.msg_uplink[src])
         up_bd_per_node = float(link.up_limit) / num_up_msg
         num_down_msg = len(self.msg_downlink[dst])
-        down_bd_per_node = float(link.down_limit) / num_up_msg
+        down_bd_per_node = float(link.down_limit) / num_down_msg
         return up_bd_per_node, down_bd_per_node
 
     # get bandwidth for this link depending on 
@@ -205,15 +221,15 @@ class Controller:
         my_down_bd = downlink_share[my_pair] * my_link.down_limit 
         return my_down_bd
 
-    
-
-
     # drain links in one round
     def drain_links(self):
-        completed = {} # msg
+        completed = {}  # msg
+
+        print("\n")
         # network deliver message
         if NETWORK_ASSIGN == "EQUAL":
             for pair, link in self.links.items():
+                print("pair:", pair, "; link:", link)
                 src, dst = pair
                 # Equal share
                 up_bd, down_bd = self.assign_bandwidth_equal(link, pair)
@@ -230,7 +246,6 @@ class Controller:
             for pair, link in self.links.items():
                 up_bd = self.assign_up_bandwidth_prop(link, pair, uplink_share)
 
-
             for pair, link in self.links.items():
                 up_bd = uplink_share[pair] * link.up_limit
                 link.update_up(up_bd)
@@ -238,7 +253,6 @@ class Controller:
             for pair, link in self.links.items():
                 down_bd = self.assign_down_bandwidth_prop(link, pair, downlink_share)
                 assert(down_bd > 0)
-
 
             for pair, link in self.links.items():
                 src, dst = pair
@@ -297,12 +311,12 @@ class Controller:
 class Network:
     def __init__(self, setup_json):
         # self.queues = {} # key is node id, value is queues of tagged msg
-        self.id = -1 # special id reserved for network
-        self.seqno = 0 # sequence number for msgs derived from network i.e. heartbeat
+        self.id = -1  # special id reserved for network
+        self.seqno = 0  # sequence number for msgs derived from network i.e. heartbeat
         self.controller = Controller()
         self.netband = {}
         self.points = {}
-        self.load_network(setup_json)
+        self.load_network(setup_json)  # adds nodes into network's bandwidth and their coordinate points
         self.freeze_count = 0
         self.num_push_msg = 0
 
@@ -314,13 +328,13 @@ class Network:
             self.freeze_count += frozen_round
 
     def load_network(self, setup_json):
-        nodes = parse_nodes(setup_json)
+        nodes = parse_nodes(setup_json)  # get nodes parameters from json
         for u in nodes:
             u_id = u['id']
             if u_id not in self.netband:
                 # self.queues[u_id] = [] 
-                self.netband[u_id] = NetBandwidth(u["upB"], u["downB"])
-                self.points[u_id] = Point(u["x"], u["y"])
+                self.netband[u_id] = NetBandwidth(u["upB"], u["downB"])  # add nodes to network's bandwidth
+                self.points[u_id] = Point(u["x"], u["y"])  # where node is located
             else:
                 print('Error. Duplicate id in setup json')
                 sys.exit(0)
@@ -368,6 +382,7 @@ class Network:
     # return dict with key be dst, value is delivered msgs
     def update(self, adv_priority=True):
         dst_msgs = self.controller.drain_links()
+        # print("\n\ndst_msgs", dst_msgs)
         
         if adv_priority:
             all_links = list(dst_msgs.keys())
@@ -385,9 +400,10 @@ class Network:
                         h_msg.append(msg)
 
                 # random.shuffle(a_msg)
+
                 dst_msgs[dst] = a_msg + h_msg
         else:
-            all_links = list( dst_msgs.keys())
+            all_links = list(dst_msgs.keys())
             for dst in all_links:
                 random.shuffle(dst_msgs[dst])
 

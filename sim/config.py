@@ -10,13 +10,13 @@ ATTACK_DEG = 100
 # time round
 RTT = 100 # millisecond
 
-SPEED_OF_LIGHT = 300000 #Km if point in 2D of 20000 Km, longest delay is 100ms
+SPEED_OF_LIGHT = 300000  # Km if point in 2D of 20000 Km, longest delay is 100ms
 
 NODE_PROPCESS = 5 # millisecond
 
 MILLISEC_PER_ROUND = NODE_PROPCESS
-HEARTBEAT = 1000/MILLISEC_PER_ROUND # 0.2 sec <=> 100 round
-HEARTBEAT_START = 0 # round
+HEARTBEAT = 1000/MILLISEC_PER_ROUND  # 0.2 sec <=> 100 round
+HEARTBEAT_START = 0  # round
 SEC_PER_ROUND = MILLISEC_PER_ROUND/1000.0
 ROUND_PER_SEC = 1 / SEC_PER_ROUND
 
@@ -34,11 +34,11 @@ TRANS_MSG_LEN = 2000 #  bytes
 ATTACK_START = 0
 
 # mesh para
-OVERLAY_D = 4 # 6 even number
-OVERLAY_DLO = 2 # 5
-OVERLAY_DHI = 7 # 12
-OVERLAY_DSCORE = 3 # 6
-OVERLAY_DLAZY = 6 # 12
+OVERLAY_D = 4  # 6 even number
+OVERLAY_DLO = 2  # 5
+OVERLAY_DHI = 7  # 12
+OVERLAY_DSCORE = 3  # 6
+OVERLAY_DLAZY = 6  # 12
 
 UPLINK_CONGEST_THRESH = OVERLAY_DHI*5  # num message in the up link capacity
 
@@ -53,10 +53,11 @@ ADV_HONEST_REPRESS = -1
 ADV_SPECIAL_SENDER = -1
 ADV_SPECIAL_SEQNO = -1
 
-TIMEOUT = 4 # round
+TIMEOUT = 4  # round
 GOSSIP_FACTOR = 0.25
 
 assert(N_PUB + N_LURK > OVERLAY_D)
+
 
 class NodeType(Enum):
     PUB = 0
