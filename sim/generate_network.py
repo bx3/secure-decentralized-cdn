@@ -12,10 +12,13 @@ from enum import Enum
 NetBandwidth = namedtuple('NetBandwidth', ['up_bd', 'down_bd'])
 Point = namedtuple('Point', ['x', 'y'])
 
-TopicSpec = namedtuple('TopicSpec', ['topic', 'cluster_spec', 'n_non_cluster']) 
+TopicSpec = namedtuple('TopicSpec', ['topic', 'cluster_spec', 'non_cluster_specs']) 
 
-TopicClusterSpec = namedtuple('TopicClusterSpec', 
+ClusterTopicSpec = namedtuple('ClusterTopicSpec', 
         ['topic', 'n_pub', 'n_lurk', 'n_sybil', 'method'])
+
+NonClusterTopicSpec = namedtuple('NonClusterTopicSpec', 
+        ['topic', 'n_pub', 'n_lurk', 'n_sybil'])
 
 class TopicCluster:
     def __init__(self, topic, pubs, lurks, sybils):
@@ -31,26 +34,43 @@ class TopicNodes:
     def __init__(self, topic, cluster, non_cluster):
         self.topic = topic
         self.cluster = cluster
-        self.non_cluster = non_cluster 
+        self.non_cluster = non_cluster # key is topic, value is nodes for that top
     def get_all_nodes(self):
-        return self.cluster.get_nodes() + self.non_cluster
+        non_cluster_nodes = []
+        for topic, c in self.non_cluster.items():
+            non_cluster_nodes += c.get_nodes()
+        all_nodes = self.cluster.get_nodes() + non_cluster_nodes
+
+        assert(len(all_nodes) == len(set(all_nodes)))
+        return all_nodes
     def get_cluster_nodes(self):
         return self.cluster.get_nodes()
     def get_non_cluster_nodes(self):
         return self.non_cluster
-    def get_role(self, node_id):
-        if node_id in self.cluster.pubs:
-            return NodeType.PUB
-        elif node_id in self.cluster.sybils:
-            return NodeType.SYBIL
-        elif node_id in self.cluster.lurks:
-            return NodeType.LURK
-        elif node_id in self.non_cluster:
-            # non-cluster is assumed to be a lurk
-            return NodeType.LURK
+    def get_role(self, node_id, topic):
+        if topic == self.topic:
+            print('node', node_id, 'belong to geocluster', self.topic)
+            if node_id in self.cluster.pubs:
+                return NodeType.PUB
+            elif node_id in self.cluster.sybils:
+                return NodeType.SYBIL
+            elif node_id in self.cluster.lurks:
+                return NodeType.LURK
+            else:
+                print('Unknown role', node_id, topic)
+                sys.exit(1)
         else:
-            return NodeType.IND
-
+            print('node', node_id, 'NOT belong to geocluster', self.topic)
+            nodes = self.non_cluster[topic]
+            if node_id in nodes.pubs:
+                return NodeType.PUB
+            elif node_id in nodes.lurks:
+                return NodeType.LURK
+            elif node_id in nodes.sybils:
+                return NodeType.SYBIL
+            else:
+                print('noncluster Unknown role', node_id, topic)
+                sys.exit(1)
 
 class Topic(str, Enum):
     EDU = 'EDU'
@@ -60,6 +80,9 @@ class Topic(str, Enum):
     NEWS = 'NEWS'
     MUSIC = 'MUSIC'
     SPORT = 'SPORT'
+
+# continent_to_topic = {"AF": 0, "NA": 1, "OC": 2, "SA": 3, "AS": 4, "EU": 5}
+continent_to_topic = {"AF": 4, "NA": 0, "OC": 5, "SA": 3, "AS": 1, "EU": 2}
 
 def get_topic_type(i):
     if i == 0 or i == 'EDU':
@@ -87,7 +110,7 @@ def load_bandwidth(self, setup_json):
         if u.id not in self.netband:
             netband[u.id] = NetBandwidth(u.upB, u.downB)
         else:
-            print('Error. Duplicate id in setup json')
+            print('Error. Duplicate id in setup json', u.id)
             sys.exit(0)
 
 def parse_summery(json_file):
@@ -104,7 +127,7 @@ def parse_real_data(json_file):
     with open(json_file) as config:
         data = json.load(config)
         summary = data['summery']
-        return data['nodes'], summary['total_nodes'], summary['total_topics']
+        return data['nodes'], summary['total_nodes'], summary['total_continents']
 
 
 def get_rand_node(n):
@@ -397,45 +420,50 @@ def generate_network(
 def sample_real_data(specs, data):
     topic_nodes = defaultdict(list) # key is topic, values are subscribing nodes
     node_topics = defaultdict(list) # key is id, values are subscribed topic 
-    regions = {} # key is id, value is region
+    continents = {} # key is id, value is continent 
     points = {}  # key is id, value is x,y 
 
     for sample in data:
         node_id = int(sample['id'])
-        topic_num = int(sample['topic']) # used default region to topic mapping
+        continent = sample['continent'] # used default region to topic mapping
+        topic_num = int(continent_to_topic[continent])
         topic = get_topic_type(topic_num)
-        region = sample['region']
+        # region = sample['region']
         la = float(sample['latitude'])
         lo = float(sample['longitude'])
 
         node_topics[node_id] = topic
         topic_nodes[topic].append(node_id) 
         points[node_id] = np.array([la, lo])
-        regions[node_id] = region
+        continents[node_id] = continent
 
     topics_cluster = {}
     
     for spec in specs:
         c_spec = spec.cluster_spec
-
         if c_spec.method == 'random':
             t = c_spec.topic
-            nodes = topic_nodes[t].copy()
-            np.random.shuffle(nodes)
-            # gen pub
-            pubs = nodes[:c_spec.n_pub]
-            # gen lurk
-            nodes = nodes[c_spec.n_pub:]
-            lurks = nodes[:c_spec.n_lurk]
-            # gen sybil
-            nodes = nodes[c_spec.n_lurk:]
-            sybils = nodes[:c_spec.n_sybil]
+            pubs, lurks, sybils = sample_nodes(topic_nodes[t].copy(), c_spec.n_pub, c_spec.n_lurk, c_spec.n_sybil)
             topics_cluster[t] = TopicCluster(t, pubs, lurks, sybils)
         else:
             print('Unknown spec method', c_spec.method)
             sys.exit(1)
 
-    return topics_cluster, node_topics, regions, points
+    return topics_cluster, node_topics, continents, points
+
+def sample_nodes(nodes_i, n_pub, n_lurk, n_sybil):
+    nodes = nodes_i.copy()
+    np.random.shuffle(nodes)
+    # gen pub
+    pubs = nodes[:n_pub]
+    # gen lurk
+    nodes = nodes[n_pub:]
+    lurks = nodes[:n_lurk]
+    # gen sybil
+    nodes = nodes[n_lurk:]
+    sybils = nodes[:n_sybil]
+    return pubs, lurks, sybils
+
 
 # takes nodes in topics and created multi-topic and known peer relation
 def mix_nodes(specs, topics_cluster):
@@ -446,24 +474,37 @@ def mix_nodes(specs, topics_cluster):
     topics_nodes = {}
     nodes_topics = defaultdict(list)
     for spec in specs:
+        topic = spec.topic
         tc = topics_cluster[spec.topic]
-        cluster_nodes = tc.get_nodes()
-        other_nodes = list(set(nodes).difference(set(cluster_nodes)))
-        np.random.shuffle(other_nodes)
-        non_cluster_nodes = other_nodes[:spec.n_non_cluster] 
+        for n in tc.pubs:
+            nodes_topics[n].append((spec.topic, NodeType.PUB))
+        for n in tc.lurks:
+            nodes_topics[n].append((spec.topic, NodeType.LURK))
+        for n in tc.sybils:
+            nodes_topics[n].append((spec.topic, NodeType.SYBIL))
 
-        tn = TopicNodes(topic, tc, non_cluster_nodes) 
-        topics_nodes[spec.topic] = tn 
+        ntc = {}
+        for ncsp in spec.non_cluster_specs:
+            continent_nodes = topics_cluster[ncsp.topic].get_nodes().copy()
+            # print(spec.topic, ncsp.topic, continent_nodes)
+            pubs, lurks, sybils = sample_nodes(continent_nodes, ncsp.n_pub, ncsp.n_lurk, ncsp.n_sybil)
+            nt = TopicCluster(ncsp.topic, pubs, lurks, sybils)
+            for n in nt.pubs:
+                nodes_topics[n].append((spec.topic, NodeType.PUB))
+            for n in nt.lurks:
+                nodes_topics[n].append((spec.topic, NodeType.LURK))
+            for n in nt.sybils:
+                nodes_topics[n].append((spec.topic, NodeType.SYBIL))
+            ntc[ncsp.topic] = nt
         
-        for n in cluster_nodes:
-            nodes_topics[n].append(spec.topic)
-        for n in non_cluster_nodes:
-            nodes_topics[n].append(spec.topic)
-
+        tn = TopicNodes(spec.topic, tc, ntc) 
+        topics_nodes[spec.topic] = tn 
+        # print(topics_nodes[spec.topic])
     return topics_nodes, nodes_topics, nodes
 
 
-def dump_specs(specs):
+def dump_specs(specs, is_clusterized):
+    out_file = {}
     out_specs = []
     for spec in specs:
         cp = spec.cluster_spec
@@ -474,45 +515,186 @@ def dump_specs(specs):
                 'n_sybil': cp.n_sybil, 
                 'method': cp.method
                 }
-
+        non_cluster_specs = []
+        for i in range(len(specs)):
+            if get_topic_type(i) != spec.topic:
+                non_cluster_spec = {
+                        'topic': get_topic_type(i),
+                        'n_pub': 0,
+                        'n_lurk': 0,
+                        'n_sybil': 0,
+                        }
+                non_cluster_specs.append(non_cluster_spec)
         out_spec = {
                 'topic': spec.topic,
                 'cluster_spec': cluster_spec,
-                'n_non_cluster': spec.n_non_cluster
+                'non_cluster_specs': non_cluster_specs
                 }
         out_specs.append(out_spec)
-    print(json.dumps(out_specs, indent=4))
+    summary = {
+                'num_topic': len(specs),
+                'is_clusterized': is_clusterized
+            }
+    out_file['summary'] = summary
+    out_file['topic_specs'] = out_specs
+    print(json.dumps(out_file, indent=4))
 
 
 def load_specs(json_file):
     specs = []
     with open(json_file) as specs_json:
         data = json.load(specs_json)
-        for spec_json in data:
+        json_summary = data['summary']
+        json_specs = data['topic_specs']
+        for spec_json in json_specs:
+            # print(spec_json)
             topic = get_topic_type(spec_json['topic'])
             cs = spec_json['cluster_spec']
-            ns = spec_json['n_non_cluster']
+            non_cluster_specs = spec_json['non_cluster_specs']
 
             n_pub = cs['n_pub']
             n_lurk = cs['n_lurk']
             n_sybil = cs['n_sybil']
             method = cs['method']
 
+            nontopic_clusters = []
+            for nc in non_cluster_specs:
+                ncts = NonClusterTopicSpec(nc['topic'], nc['n_pub'], nc['n_lurk'], nc['n_sybil'])
+                nontopic_clusters.append(ncts)
 
-            topic_cluster_spec = TopicClusterSpec(topic, n_pub, n_lurk, n_sybil, method)
-            topic_spec = TopicSpec(topic, topic_cluster_spec, ns)
+            topic_cluster_spec = ClusterTopicSpec(topic, n_pub, n_lurk, n_sybil, method)
+            topic_spec = TopicSpec(topic, topic_cluster_spec, nontopic_clusters)
             specs.append(topic_spec)
-    return specs  
+    return specs, json_summary
 
-def gen_specs(num_topic, n_pub_per_topic, n_lurk_per_topic, n_sybil_per_topic, n_non_cluster):
+def gen_specs(num_topic, n_pub_per_topic, n_lurk_per_topic, n_sybil_per_topic, is_clusterized, n_non_cluster):
     specs = []
     for i in range(num_topic):
         topic = get_topic_type(i)
-        topic_cluster_spec = TopicClusterSpec(
+        topic_cluster_spec = ClusterTopicSpec(
             topic, n_pub_per_topic, n_lurk_per_topic, n_sybil_per_topic, 'random')
         topic_spec = TopicSpec(topic, topic_cluster_spec, n_non_cluster)
         specs.append(topic_spec)
-    dump_specs(specs)
+    dump_specs(specs, is_clusterized)
+# use cluster spec for randomized initialziation
+def gen_nonclusterized_random(real_data, specs, json_summary, init_peer_num, down_mean, down_std, up_mean, up_std, interval, is_cold_boot):
+    num_topic = int(json_summary['num_topic'])
+    
+    selected_nodes = []
+    np.random.shuffle(real_data)
+
+    topic_nodes = {}
+    topics_list = []
+    for spec in specs:
+        cs = spec.cluster_spec
+        topics_list.append(spec.topic)
+        num_nodes = cs.n_pub + cs.n_lurk + cs.n_sybil
+        topic_nodes[spec.topic] = real_data[:num_nodes]
+        real_data = real_data[num_nodes:]
+
+    out_nodes = []
+    i = 0
+    node_id_map = {}
+    for spec in specs:
+        topic = spec.topic
+        cs = spec.cluster_spec
+        nodes = topic_nodes[topic]
+        for j, n in enumerate(nodes):
+            node_id = n["id"]
+            node_id_map[node_id] = i
+            i += 1
+    for spec in specs:
+        topic = spec.topic
+        cs = spec.cluster_spec
+        nodes = topic_nodes[topic]
+        for j, n in enumerate(nodes):
+            node_id = n["id"]
+            i = node_id_map[node_id]
+            if j < cs.n_pub: 
+                topic_role = {topic: NodeType.PUB}
+            elif j < cs.n_pub + cs.n_lurk:
+                topic_role = {topic: NodeType.LURK}
+            else:
+                topic_role = {topic: NodeType.SYBIL}
+            
+            topic_peers = []
+            for cand in topic_nodes[topic]:
+                cand_id = cand['id']
+                if cand_id != node_id:
+                    topic_peers.append(node_id_map[cand_id])
+
+                if len(topic_peers) == init_peer_num:
+                    break
+
+            downB = random.gauss(down_mean, down_std)
+            upB = random.gauss(up_mean, up_std)
+
+            la = n['latitude']
+            lo = n['longitude']
+            topics = [topic]
+            node = {
+                "id": i,
+                "roles": topic_role, #NodeType.PUB,
+                "known": {topic: topic_peers},
+                "downB": downB,
+                "upB": upB,
+                "interval": interval,
+                "topics": topics,
+                "x": la,
+                "y": lo 
+            }
+            i += 1
+            out_nodes.append(node)
+
+    summery = {
+            "NUM_NODE": i,
+            "COLD_BOOT": is_cold_boot, 
+            "INIT_PEER_NUM": init_peer_num,
+            "DOWN_MEAN": down_mean,
+            "DOWN_STD": down_std,
+            "UP_MEAN": up_mean,
+            "UP_STD": up_std,
+            "INTERVAL": interval,
+            "NUM_TOPIC": num_topic,
+            "TOPICS": topics_list,
+            "topics_nodes": topic_nodes,
+            "spec": specs
+        }
+    setup = {"summery": summery, "nodes": out_nodes}
+    print(json.dumps(setup, indent=4))
+
+
+    # for node_id in selected_nodes:
+        # topics = nodes_topics[node_id]
+        # topic_role = {}
+        # for topic in topics:
+            # tn = topics_nodes[topic]
+            # topic_role[topic] = tn.get_role(node_id)
+
+        # topic_peers = {}
+        # for topic in topics:
+            # nodes = topics_nodes[topic].get_all_nodes() 
+            # nodes.remove(node_id)
+            # np.random.shuffle(nodes)
+            # selected_init_peers = nodes[:init_peer_num]
+            # topic_peers[topic] = [nodeId_outId_map[j] for j in selected_init_peers]
+
+        # downB = random.gauss(down_mean, down_std)
+        # upB = random.gauss(up_mean, up_std)
+        # x, y = real_points[node_id]
+
+        # node = {
+            # "id": nodeId_outId_map[node_id],
+            # "roles": topic_role, #NodeType.PUB,
+            # "known": topic_peers,
+            # "downB": downB,
+            # "upB": upB,
+            # "interval": interval,
+            # "topics": topics,
+            # "x": x,
+            # "y": y
+        # }
+        # out_nodes.append(node)
 
 def gen_real_data_network(
         is_cold_boot, 
@@ -524,13 +706,19 @@ def gen_real_data_network(
         geocluster_file):
     real_data, data_num_nodes, data_num_topic = parse_real_data(geocluster_file)
 
-    specs = load_specs(specs_json)
+    specs, json_summary  = load_specs(specs_json)
     num_topic = len(specs)
+    if not json_summary['is_clusterized']:    
+        gen_nonclusterized_random(real_data.copy(), specs, json_summary, init_peer_num, down_mean, down_std, up_mean, up_std, interval, is_cold_boot)
+        return 
+
     topics_cluster, real_node_topics, real_regions, real_points = sample_real_data(
             specs, real_data)
+    # for topic, cluster in topics_cluster.items():
+        # print(cluster.get_nodes())
     topics_nodes, nodes_topics, selected_nodes = mix_nodes(specs, topics_cluster)
     num_node = len(nodes_topics)
-    # print('topics_nodes', topics_nodes)
+    # print(num_node)
     # print('nodes_topics', nodes_topics)
     out_nodes = []
 
@@ -541,15 +729,19 @@ def gen_real_data_network(
         i += 1
 
     for node_id in selected_nodes:
-        topics = nodes_topics[node_id]
+        topic_role_list = nodes_topics[node_id]
+        topics = []
         topic_role = {}
-        for topic in topics:
-            tn = topics_nodes[topic]
-            topic_role[topic] = tn.get_role(node_id)
+        for topic, role in topic_role_list:
+            # tn = topics_nodes[topic]
+            topic_role[topic] = role # tn.get_role(node_id, topic)
+            topics.append(topic)
 
         topic_peers = {}
         for topic in topics:
+            # print(topic)
             nodes = topics_nodes[topic].get_all_nodes() 
+
             nodes.remove(node_id)
             np.random.shuffle(nodes)
             selected_init_peers = nodes[:init_peer_num]

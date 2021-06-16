@@ -9,6 +9,7 @@ from messages import AdvRate
 from generate_network import parse_nodes 
 from generate_network import NetBandwidth
 from generate_network import Point 
+import geopy.distance
 
 
 NetworkState = namedtuple('NetworkState', ['links', 'uplinks', 'downlinks', 'freeze_count'])
@@ -29,7 +30,7 @@ class LinkState:
         self.frozen = 0 # count down to be active
         self.up_point = up_point
         self.down_point = down_point
-        self.prop_delay = 0 # int(math.sqrt((up_point[0]-down_point[0])**2 + (up_point[1]-down_point[1])**2)/SPEED_OF_LIGHT *1000 ) #ms
+        self.prop_delay = geopy.distance.geodesic(up_point, down_point).km / SPEED_OF_LIGHT *1000 #ms
         self.elapsed = 0  # ms
 
     def get_link_snapshot(self):
@@ -326,7 +327,7 @@ class Network:
                 self.netband[u_id] = NetBandwidth(u["upB"], u["downB"])
                 self.points[u_id] = Point(u["x"], u["y"])
             else:
-                print('Error. Duplicate id in setup json')
+                print('Error. Duplicate id in setup json', u_id)
                 sys.exit(0)
 
     def is_uplink_congested(self, u):

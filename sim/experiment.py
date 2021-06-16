@@ -19,7 +19,7 @@ class Snapshot:
         self.network = None # message queue in for each node
 
 class Experiment:
-    def __init__(self, setup_json, heartbeat):
+    def __init__(self, setup_json, heartbeat, update_method):
         self.snapshots = []
         self.nodes = {}  # honest nodes
         self.sybils = {}
@@ -27,6 +27,10 @@ class Experiment:
 
         self.network = Network(setup_json)
         self.heartbeat_period = heartbeat
+
+        # log file
+        self.log_file = 'data/log'
+        self.update_method = update_method
     
         # load both nodes and sybils nodes
         self.load_nodes(setup_json) 
@@ -37,6 +41,10 @@ class Experiment:
         # eclipse attack
         self.target = -1
 
+        with open(self.log_file, 'w') as w:
+            w.write("num_node" + str(len(self.nodes)) + '\n')
+
+
     # # # # # # # # 
     #  main loop  #
     # # # # # # # # 
@@ -44,8 +52,8 @@ class Experiment:
         curr_shots = [] 
         for r in range(start_round, start_round+epoch):
             # debug
-            # if r % HEARTBEAT == 0:
-                # print("****\t\theartbeat generated", r, HEARTBEAT)
+            if r % HEARTBEAT == 0:
+                print("****\t\theartbeat generated", r, HEARTBEAT)
 
             # start attack
             # self.attack_management(r, self.network, targets)
@@ -161,7 +169,6 @@ class Experiment:
             interval = float(u["interval"])
             x = float(u["x"])
             y = float(u["y"])
-            print(u_id, topics) 
             if u_id not in self.nodes:
                 self.nodes[u_id] = Node(
                     roles,
@@ -171,7 +178,9 @@ class Experiment:
                     self.heartbeat_period,
                     topics,
                     x,
-                    y
+                    y,
+                    self.log_file,
+                    self.update_method
                 )
             else: 
                 print('Error. config file duplicate id')

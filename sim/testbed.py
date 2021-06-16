@@ -11,16 +11,16 @@ random.seed(31)
 
 if len(sys.argv) < 2:
     print("require subcommand: run, gen-network\n")
-    print("run json epoch[int]")
+    print("run json epoch[int] outdir[str] method[individual/coll-subset]")
     print("gen-network num_pub_per_topic[int] num_lurk[int] num_sybil[int] is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] interval_sec[float] num_topic[int] area_length[int]") 
     print("gen-network-real-data is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] interval_sec[float]  geocluster-data[str]")
     print("gen-spec num_topic[int] num_pub_per_topic[int] num_lurk[int] num_sybil[int]")
     print("demo json")
-    print('exmaple: ./testbed.py run topo/one_pub.json 100')
+    print('exmaple: ./testbed.py run topo/one_pub.json 100 output coll-subset')
     print('exmaple: ./testbed.py gen-network 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000> topo/two_topic_2_pub.json')
     print('exmaple: ./testbed.py gen-network-special 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000 y > topo/two_topic_2_pub.json')
-    print('exmaple: ./testbed.py gen-network-real-data input/spec.json n 20 1000000 0 1000000 0 0.1 geocluster.json  > topo/real_data.json')
-    print('exmaple: ./testbed.py gen-spec 4 1 4 0 2')
+    print('exmaple: ./testbed.py gen-network-real-data specs/spec.json n 20 1000000 0 1000000 0 0.1 input_data/bitcoin.json  > topo/real_data.json')
+    print('exmaple: ./testbed.py gen-specs 4 1 4 0 true 2')
     print('exmaple: ./testbed.py demo topo/one_pub.json')
     sys.exit()
 
@@ -52,19 +52,32 @@ if cmd == "gen-network":
         area_length
         )
 elif cmd == "run":
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 6:
         print("require arguments")
         sys.exit(0)
     setup = sys.argv[2]
     epoch = int(sys.argv[3])
+    dirname = sys.argv[4]
+    update_method = sys.argv[5]
+
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+
     summery = gn.parse_summery(setup)
     heartbeat = HEARTBEAT
-    gossipsub = Experiment(setup, heartbeat)
+    gossipsub = Experiment(setup, heartbeat, update_method)
     snapshots = gossipsub.start(epoch)
 
     # analyzer.plot_eclipse_attack(snapshots, [1])
     topics = [gn.get_topic_type(t) for t in summery['TOPICS']]
-    analyzer.plot_topics_latency(snapshots, topics)
+    analyzer.plot_topics_latency(snapshots, topics, dirname)
+   
+    plot_indices = [int(i*epoch/3) for i in range(4)]
+    plot_slices = [(0, epoch)]
+    for i in range(1,4):
+        plot_slices.append((plot_indices[i-1], plot_indices[i]))
+    analyzer.plot_topics_latency_cdfs(snapshots, topics, dirname, plot_slices)
+
     # analyze_network(snapshots)
     # analyze_snapshot(snapshots)
     # dump_graph(snapshots[50])
@@ -264,7 +277,7 @@ elif cmd== "gen-network-real-data":
         )
 
 elif cmd == 'gen-specs':
-    if len(sys.argv) < 6:
+    if len(sys.argv) < 7:
         print("require arguments")
         sys.exit(0)
 
@@ -272,8 +285,9 @@ elif cmd == 'gen-specs':
     n_pub_per_topic = int(sys.argv[3])
     n_lurk_per_topic = int(sys.argv[4])
     n_sybil_per_topic = int(sys.argv[5])
-    n_non_cluster = int(sys.argv[6])
-    gn.gen_specs(n_topic, n_pub_per_topic, n_lurk_per_topic, n_sybil_per_topic, n_non_cluster)
+    is_clusterized = sys.argv[6] == 'true'
+    n_non_cluster = int(sys.argv[7])
+    gn.gen_specs(n_topic, n_pub_per_topic, n_lurk_per_topic, n_sybil_per_topic, is_clusterized, n_non_cluster)
 else:
     print('Require a valid subcommand', cmd)
 

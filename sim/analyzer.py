@@ -9,6 +9,9 @@ from messages import Direction
 from messages import MessageType
 import numpy as np
 import sys
+from typing import List
+from typing import Tuple
+
 
 def get_degrees(snapshots):
     # get the mean/max/min degrees of all nodes in all snapshots
@@ -188,22 +191,22 @@ def trans_latency_90(snapshots, topic):
     return trans_90_lat, trans_gen_r
 
 
-def plot_topics_latency(snapshots, topics):
+def plot_topics_latency(snapshots, topics, dirname):
     topic_latencies = {}
     topic_trans_gen = {}
     max_epoch = len(snapshots)
     for topic in topics:
         components, honest_components = get_components(snapshots, topic)
         topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90(snapshots, topic)
-    plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch)
+    plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch, dirname)
 
 def get_cmap(n, name='hsv'):
     '''Returns a function that maps each index in 0, 1, ..., n-1 to a distinct
     RGB color; the keyword argument name must be a standard mpl colormap name.'''
     return plt.cm.get_cmap(name, n)
 
-def plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch):
-    fig, axs = plt.subplots(len(topics))
+def plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch, dirname):
+    fig, axs = plt.subplots(len(topics), dpi=200)
     topics_data = {}
     publisers = set()
     for topic in topics:
@@ -221,28 +224,32 @@ def plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch):
     for p in publisers:
         node_color[p] = np.random.rand(3,)
 
+    
+
     for i in range(len(topics)):
         topic = topics[i]
         nodes_data = topics_data[topic] 
         k = 0
         for u in nodes_data:
             gen_time, lat = zip(*nodes_data[u])
-            print(topic , 'node', u, gen_time, lat)
+            # print(topic , 'node', u, gen_time, lat)
             axs[i].bar(list(gen_time), list(lat), label='node '+str(u))
-            axs[i].set_title('topic ' + str(i) , fontsize='small')
+            
+            axs[i].set_title('topic ' + topic , fontsize='small')
             axs[i].set_ylabel('latency (round)', fontsize='small')
             axs[i].legend(loc='upper right')
             axs[i].set_xlim([0, max_epoch-1])
-
             # if i != len(topics)-1:
                 # axs[i].set_xticks([])
             # k += 1
     axs[-1].set_xlabel('round', fontsize='small')
+
+
         # num_link_patch = mpatches.Patch(color='green', label='num link')
         # num_trans_link_patch = mpatches.Patch(color='blue', label='num link with trans')
         # axs[i].legend(handles=[num_link_patch, num_trans_link_patch])   
     plt.tight_layout()
-    plt.show()
+    plt.savefig(dirname + '/instanceous')
 
 
 
@@ -787,7 +794,7 @@ def analyze_freezer(snapshots):
         acc += i
         accumulate.append(acc)
     
-    print(accumulate[-1])
+    # print(accumulate[-1])
 
     # fig, axs = plt.subplots(2)
     
@@ -800,4 +807,112 @@ def analyze_freezer(snapshots):
     # axs[1].title.set_text("number freeze per round")   
     # plt.tight_layout()
     # plt.show()
+
+def plot_topics_latency_cdfs(snapshots, topics, dirname, epoch_ranges: List[Tuple[int, int]] ):
+    topic_latencies = {}
+    topic_trans_gen = {}
+
+    reg_epoch_range = epoch_ranges[0]
+    bot_left_epoch_range = epoch_ranges[1]
+    bot_mid_epoch_range = epoch_ranges[2]
+    bot_right_epoch_range = epoch_ranges[3]
+
+    for topic in topics:
+        topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90(snapshots, topic)
+
+    # print("epoch_ranges", reg_epoch_range, bot_left_epoch_range, bot_mid_epoch_range, bot_right_epoch_range)
+
+    for topic, tids_and_latencies in topic_latencies.items():
+        fig = plt.figure()
+
+        ax1 = plt.subplot2grid((2, 3), (0, 0), colspan=3)
+        ax1.set_ylim([0, 1])
+        ax2 = plt.subplot2grid((2, 3), (1, 0))
+        ax2.set_ylim([0, 1])
+        ax3 = plt.subplot2grid((2, 3), (1, 1))
+        ax3.set_ylim([0, 1])
+        ax4 = plt.subplot2grid((2, 3), (1, 2))
+        ax4.set_ylim([0, 1])
+        plt.tight_layout()
+
+        x_y_axis_creator = CreateCDFplot()
+
+        sorted_latencies, cdf_probs = x_y_axis_creator.get_latencies_and_cdfs_with_epoch_ranges(tids_and_latencies,
+                                                                                                topic_trans_gen[topic],
+                                                                                                reg_epoch_range)
+        # print("topic", topic, "latency_occurrences", sorted_latencies)
+        # print("cdf_probs", cdf_probs)
+        # print()
+        ax1.plot(sorted_latencies, cdf_probs, '.-')
+        ax1.set_xlabel('delay (rounds)')
+        ax1.set_ylabel('CDF')
+        ax1.set_title(topic)
+
+        sorted_latencies, cdf_probs = x_y_axis_creator.get_latencies_and_cdfs_with_epoch_ranges(tids_and_latencies,
+                                                                                                topic_trans_gen[topic],
+                                                                                                bot_left_epoch_range)
+        # print("topic", topic, "latency_occurrences", sorted_latencies)
+        # print("cdf_probs", cdf_probs)
+        # print()
+        ax2.plot(sorted_latencies, cdf_probs, '.-')
+        ax2.set_xlabel('delay (rounds)')
+        ax2.set_ylabel('CDF')
+        ax2.set_title(topic + " Range: " + str(bot_left_epoch_range))
+
+        sorted_latencies, cdf_probs = x_y_axis_creator.get_latencies_and_cdfs_with_epoch_ranges(tids_and_latencies,
+                                                                                                topic_trans_gen[topic],
+                                                                                                bot_mid_epoch_range)
+        # print("topic", topic, "latency_occurrences", sorted_latencies)
+        # print("cdf_probs", cdf_probs)
+        # print()
+        ax3.plot(sorted_latencies, cdf_probs, '.-')
+        ax3.set_xlabel('delay (rounds)')
+        ax3.set_ylabel('CDF')
+        ax3.set_title(topic + " Range: " + str(bot_mid_epoch_range))
+
+        sorted_latencies, cdf_probs = x_y_axis_creator.get_latencies_and_cdfs_with_epoch_ranges(tids_and_latencies,
+                                                                                                topic_trans_gen[topic],
+                                                                                                bot_right_epoch_range)
+        # print("topic", topic, "latency_occurrences", sorted_latencies)
+        # print("cdf_probs", cdf_probs)
+        # print()
+        ax4.plot(sorted_latencies, cdf_probs, '.-')
+        ax4.set_xlabel('delay (rounds)')
+        ax4.set_ylabel('CDF')
+        ax4.set_title(topic + " Range: " + str(bot_right_epoch_range))
+        plt.savefig(dirname + '/' +  topic+ '-cdf')
+
+
+class CreateCDFplot:
+    @staticmethod
+    def get_latencies_with_respective_cdf_probs(tids_and_latencies):
+        latency_occurrences = {}
+        latency_occurrences = defaultdict(lambda: 0, latency_occurrences)
+        for tid, latency in tids_and_latencies.items():
+            latency_occurrences[latency] += 1
+
+        cdf_prob = 0
+        total_msgs_sent = sum(latency_occurrences.values())
+        cdf_probs = []
+        for latency in sorted(latency_occurrences):
+            prob = latency_occurrences[latency] / total_msgs_sent
+            cdf_prob += prob
+            cdf_probs.append(cdf_prob)
+
+        return list(sorted(latency_occurrences.keys())), cdf_probs
+
+    def get_latencies_and_cdfs_with_epoch_ranges(self, tids_and_latencies, trans_gens,
+                                                 epoch_range: Tuple[int, int]):
+        start_epoch = epoch_range[0]
+        end_epoch = epoch_range[1]
+        # print("epoch_range", epoch_range)
+        in_range_tids_and_latencies = {}
+        temp_gens = []
+
+        for tid, gen_epoch in trans_gens.items():
+            if start_epoch <= gen_epoch <= end_epoch:
+                in_range_tids_and_latencies[tid] = tids_and_latencies[tid]
+                temp_gens.append(gen_epoch)
+        # print("temp_gens", temp_gens)
+        return self.get_latencies_with_respective_cdf_probs(in_range_tids_and_latencies)
 
