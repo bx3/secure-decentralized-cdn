@@ -9,6 +9,7 @@ from sim.messages import AdvRate
 from sim.generate_network import parse_nodes
 from sim.generate_network import NetBandwidth
 from sim.generate_network import Point
+import geopy.distance
 
 
 NetworkState = namedtuple('NetworkState', ['links', 'uplinks', 'downlinks', 'freeze_count'])
@@ -32,11 +33,13 @@ class LinkState:
         self.down_point = down_point
 
         # prop_delay = distance / (signal speed = speed of light)
-        self.prop_delay = int(math.sqrt((up_point[0]-down_point[0])**2 +
-                                        (up_point[1]-down_point[1])**2)/SPEED_OF_LIGHT * 1000)  # ms
-        # self.prop_delay = int(math.sqrt((up_point[0] - down_point[0]) ** 2 +
-        #                                 (up_point[1] - down_point[1]) ** 2) / (SPEED_OF_LIGHT * 1000))  # ms
-        print("prop_delay", self.prop_delay)
+        # self.prop_delay = int(math.sqrt((up_point[0]-down_point[0])**2 +
+        #                                 (up_point[1]-down_point[1])**2)/SPEED_OF_LIGHT * 1000)  # ms
+        # print("prop_delay", self.prop_delay)
+        self.prop_delay = 0  # ????? WHY ????? geopy.distance.vincenty(coords_1, coords_2).km
+        upload_coordinate = (up_point[0], up_point[1])
+        download_coordinate = (down_point[0], down_point[1])
+        self.prop_delay = int(geopy.distance.distance(upload_coordinate, download_coordinate).km / SPEED_OF_LIGHT * 1000)
         self.elapsed = 0  # ms
 
     def __repr__(self):
@@ -125,7 +128,7 @@ class LinkState:
         uploaded_byte = up_bd * SEC_PER_ROUND
         if self.up_remain < uploaded_byte:
             uploaded_byte = self.up_remain
-        downloaded_byte = down_bd * SEC_PER_ROUND
+        # downloaded_byte = down_bd * SEC_PER_ROUND  # !!!!! WAS HERE BEFORE!!!!!!
 
         self.up_remain -= uploaded_byte
         self.down_remain += uploaded_byte
@@ -134,7 +137,11 @@ class LinkState:
         if self.elapsed < self.prop_delay:
             self.elapsed += SEC_PER_ROUND*1000  # ms per round
             return []
-
+        else:
+            t = SEC_PER_ROUND*1000 + self.elapsed - self.prop_delay
+            self.elapsed = self.prop_delay
+            downloaded_byte = down_bd * t/1000
+             
         self.down_remain -= downloaded_byte
 
         self.byte_transferred += downloaded_byte
@@ -180,7 +187,7 @@ class Controller:
         my_src, my_dst = my_pair
         local_uplink_share = {}
         up_total = 0
-        #print(my_link.up_remain, my_link.down_remain)
+        # print(my_link.up_remain, my_link.down_remain)
         for dst in self.msg_uplink[my_src]:
             pair = (my_src, dst)
             link = self.links[pair]
@@ -197,7 +204,6 @@ class Controller:
             else:
                 assert(uplink_share[pair] == up_ratio)
 
-        
         my_up_bd = uplink_share[my_pair] * my_link.up_limit 
         return my_up_bd
 
@@ -465,7 +471,6 @@ class Network:
     def delay_msgs(self):
         pass
 
-    
 
 # x and y are coordinates
 def get_dist(x, y):

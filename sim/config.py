@@ -1,10 +1,7 @@
 from enum import Enum
+import sys
 
 # network
-N_PUB = 90
-N_LURK = 10
-N_DEGREE = 20
-N_SYBIL = 10
 ATTACK_DEG = 100
 
 # time round
@@ -28,8 +25,8 @@ MAX_BANDWIDTH = 1000000000000
 
 
 # message len
-CTRL_MSG_LEN = 10 # bytes
-TRANS_MSG_LEN = 2000 #  bytes
+CTRL_MSG_LEN = 10  # bytes
+TRANS_MSG_LEN = 2000  #  bytes
 
 ATTACK_START = 0
 
@@ -56,18 +53,30 @@ ADV_SPECIAL_SEQNO = -1
 TIMEOUT = 4  # round
 GOSSIP_FACTOR = 0.25
 
-assert(N_PUB + N_LURK > OVERLAY_D)
+
+class NodeType(str, Enum):
+    PUB = 'PUB'
+    LURK = 'LURK'
+    SYBIL = 'SYBIL'
+    IND = 'IND' # INDIFFERENT
 
 
-class NodeType(Enum):
-    PUB = 0
-    LURK = 1
-    SYBIL = 2
-    BOOTSTRAP = 3 
+def get_nodetype(i):
+    if i == 0 or i == 'PUB':
+        return NodeType.PUB
+    elif i == 0 or i == 'LURK':
+        return NodeType.LURK
+    elif i == 0 or i == 'SYBIL':
+        return NodeType.SYBIL
+    elif i == 0 or i == 'IND':
+        return NodeType.IND
+    else:
+        print('Error. Unknown Node Type')
+        sys.exit(1)
 
 
-DECAY_INTERVAL = 10 # rounds
-RETENSION_PERIOD = 100 # rounds how long peer's score is removed
+DECAY_INTERVAL = 10  # rounds
+RETENSION_PERIOD = 100  # rounds how long peer's score is removed
 
 
 # Peer Score Parameters
@@ -81,13 +90,13 @@ FIRST_MESSAGE_DELIVERIES_WEIGHT = 0.664
 FIRST_MESSAGE_DELIVERIES_DECAY = 0.9916
 FIRST_MESSAGE_DELIVERIES_CAP = 1500.0
 MESH_MESSAGE_DELIVERIES_WEIGHT = -0.25
-#MESH_MESSAGE_DELIVERIES_WEIGHT = -0.05
+# MESH_MESSAGE_DELIVERIES_WEIGHT = -0.05
 MESH_MESSAGE_DELIVERIES_DECAY = 0.997
 MESH_MESSAGE_DELIVERIES_CAP = 400.0
 #  MESH_MESSAGE_DELIVERIES_THRESHOLD = 10.0
 MESH_MESSAGE_DELIVERIES_THRESHOLD = 2.5
 MESH_MESSAGE_DELIVERIES_ACTIVATION = "1m"
-MESH_MESSAGE_DELIVERY_WINDOW = 30 # round <= "5ms"
+MESH_MESSAGE_DELIVERY_WINDOW = 30  # round <= "5ms"
 MESH_FAILURE_PENALTY_WEIGHT = -0.25
 MESH_FAILURE_PENALTY_DECAY = 0.997
 INVALID_MESSAGE_DELIVERIES_WEIGHT = -99.0

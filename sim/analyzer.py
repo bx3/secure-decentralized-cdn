@@ -9,6 +9,7 @@ from sim.messages import Direction, MessageType
 # from messages import MessageType
 import numpy as np
 import sys
+from typing import Tuple, List
 
 
 def get_degrees(snapshots):
@@ -33,6 +34,7 @@ def get_degrees(snapshots):
 
     return degrees_mean, degrees_max, degrees_min
 
+
 class DisjointSet(object):
     def __init__(self):
         self.parent = None
@@ -46,6 +48,7 @@ class DisjointSet(object):
         us = self.find()
         if them != us:
             us.parent = them
+
 
 def count_components(nodes, topic):
     sets = {}
@@ -70,6 +73,7 @@ def count_components(nodes, topic):
     component = len(set(x.find() for x in sets.values()))
     honest_component = len(set(x.find() for x in honest_sets.values()))
     return component, honest_component
+
 
 def get_components(snapshots, topic):
     # get the number of components and honest components of all snapshots
@@ -128,12 +132,13 @@ def analyze_eclipse(snapshots, target):
         history_out.append(num_out)
     return history_in, history_out
 
+
 def throughput_90(snapshots):
     reached90_transid = set()
-    trans_recv = {} # key is trans id, value is a group of receiving nodes
-    acc_recv_msg_hist = [] # acc for accumulative
-    acc_gen_msg_hist =[] 
-    num_honest_node = get_num_honest(snapshots[-1])
+    trans_recv = {}  # key is trans id, value is a group of receiving nodes
+    acc_recv_msg_hist = []  # acc for accumulative
+    acc_gen_msg_hist = []
+    num_honest_node = get_num_honest(snapshots[-1])  # !!!!! missing another arg parameter!!!!
 
     for r in range(len(snapshots)):
         # consider only honest node
@@ -183,10 +188,12 @@ def trans_latency_90(snapshots, topic):
     # find 90th percentile latency out of each TransIds' latencies
     trans_90_lat = {}
     for tid, latencies in trans_latency.items():
-        lats = [l for _, l in latencies]
-        sorted_lat = sorted(lats)  # small to large #s
-        print(sorted_lat)
-        lat90 = sorted_lat[int(len(sorted_lat)*9.0/10.0) - 1]  # THIS IS WHERE THE PROBLEM IS!!!!!
+        lats = [l for a, l in latencies]
+        sorted_lat = sorted(lats)
+        if len(sorted_lat) >= 10:
+            lat90 = sorted_lat[int(round(len(sorted_lat)*9.0/10.0)) - 1] # THIS IS WHERE THE PROBLEM IS!!!!!
+        else:
+            lat90 = sorted_lat[int(len(sorted_lat)*9.0/10.0)]
         trans_90_lat[tid] = lat90
         print(trans_90_lat, lat90)
     return trans_90_lat, trans_gen_r
@@ -196,16 +203,16 @@ def plot_topics_latency(snapshots, topics):
     topic_latencies = {}
     topic_trans_gen = {}
     # print("snapshots: ", snapshots)
+    max_epoch = len(snapshots)
     for topic in topics:
         components, honest_components = get_components(snapshots, topic)
-        # plot_components(axs[0], honest_components)
         topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90(snapshots, topic)
 
     print("topic_latencies", topic_latencies)
     print("topic_trans_gen", topic_trans_gen)
     print("topics", topics)
+    plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch)
 
-    plot_topic_latency(topic_latencies, topic_trans_gen, topics)
 
 def get_cmap(n, name='hsv'):
     '''Returns a function that maps each index in 0, 1, ..., n-1 to a distinct
@@ -213,7 +220,7 @@ def get_cmap(n, name='hsv'):
     return plt.cm.get_cmap(name, n)
 
 
-def plot_topic_latency(topic_latencies, topic_trans_gen, topics):
+def plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch):
     fig, axs = plt.subplots(len(topics))
     topics_data = {}
     publishers = set()
@@ -223,9 +230,10 @@ def plot_topic_latency(topic_latencies, topic_trans_gen, topics):
         nodes_data = defaultdict(list)
         for tid, lat in latencies.items():
             gen_time = trans_gen[tid]
-            node_id, trans_id = tid
-            nodes_data[node_id].append((gen_time, lat))
-            publishers.add(node_id)
+
+            first_node_id, trans_id = tid
+            nodes_data[first_node_id].append((gen_time, lat))
+            publishers.add(first_node_id)
         topics_data[topic] = nodes_data
 
     node_color = {}
@@ -239,19 +247,21 @@ def plot_topic_latency(topic_latencies, topic_trans_gen, topics):
             nodes_data = topics_data[topic]
             k = 0
             for u in nodes_data:
-                print("*nodes_data[u]", *nodes_data[u])  # *: collects all the positional arguments in a tuple
-                temp = list(zip(*nodes_data[u]))
-                print("zip(*nodes_data[u])", temp)
-
-                gen_time, lat = zip(*nodes_data[u])  # * in front of variables:
-                print('topic', i, 'node', u, gen_time, lat)
-                axs[i].bar(list(gen_time), list(lat), label='node '+str(u))
+                gen_time, lat = zip(*nodes_data[u])
+                print(topic, 'node', u, gen_time, lat)
+                axs[i].bar(list(gen_time), list(lat), label='node ' + str(u))
                 axs[i].set_title('topic ' + str(i), fontsize='small')
                 axs[i].set_ylabel('latency (round)', fontsize='small')
                 axs[i].legend(loc='upper right')
-                k += 1
+                axs[i].set_xlim([0, max_epoch - 1])
 
+                # if i != len(topics)-1:
+                # axs[i].set_xticks([])
+                # k += 1
         axs[-1].set_xlabel('round', fontsize='small')
+        # num_link_patch = mpatches.Patch(color='green', label='num link')
+        # num_trans_link_patch = mpatches.Patch(color='blue', label='num link with trans')
+        # axs[i].legend(handles=[num_link_patch, num_trans_link_patch])
 
     else:
         for i in range(len(topics)):
@@ -275,15 +285,125 @@ def plot_topic_latency(topic_latencies, topic_trans_gen, topics):
         # num_link_patch = mpatches.Patch(color='green', label='num link')
         # num_trans_link_patch = mpatches.Patch(color='blue', label='num link with trans')
         # axs[i].legend(handles=[num_link_patch, num_trans_link_patch])   
+    plt.tight_layout()
     plt.show()
 
+
+def plot_topics_latency_cdfs(snapshots, topics, epoch_ranges: List[Tuple[int, int]]):
+    topic_latencies = {}
+    topic_trans_gen = {}
+
+    reg_epoch_range = epoch_ranges[0]
+    bot_left_epoch_range = epoch_ranges[1]
+    bot_mid_epoch_range = epoch_ranges[2]
+    bot_right_epoch_range = epoch_ranges[3]
+
+    for topic in topics:
+        topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90(snapshots, topic)
+
+    print("epoch_ranges", reg_epoch_range, bot_left_epoch_range, bot_mid_epoch_range, bot_right_epoch_range)
+
+    for topic, tids_and_latencies in topic_latencies.items():
+        fig = plt.figure()
+
+        ax1 = plt.subplot2grid((2, 3), (0, 0), colspan=3)
+        ax1.set_ylim([0, 1])
+        ax2 = plt.subplot2grid((2, 3), (1, 0))
+        ax2.set_ylim([0, 1])
+        ax3 = plt.subplot2grid((2, 3), (1, 1))
+        ax3.set_ylim([0, 1])
+        ax4 = plt.subplot2grid((2, 3), (1, 2))
+        ax4.set_ylim([0, 1])
+        plt.tight_layout()
+
+        x_y_axis_creator = CreateCDFplot()
+
+        sorted_latencies, cdf_probs = x_y_axis_creator.get_latencies_and_cdfs_with_epoch_ranges(tids_and_latencies,
+                                                                                                topic_trans_gen[topic],
+                                                                                                reg_epoch_range)
+        print("topic", topic, "latency_occurrences", sorted_latencies)
+        print("cdf_probs", cdf_probs)
+        print()
+        ax1.plot(sorted_latencies, cdf_probs, '.-')
+        ax1.set_xlabel('delay (rounds)')
+        ax1.set_ylabel('CDF')
+        ax1.set_title(topic)
+
+        sorted_latencies, cdf_probs = x_y_axis_creator.get_latencies_and_cdfs_with_epoch_ranges(tids_and_latencies,
+                                                                                                topic_trans_gen[topic],
+                                                                                                bot_left_epoch_range)
+        print("topic", topic, "latency_occurrences", sorted_latencies)
+        print("cdf_probs", cdf_probs)
+        print()
+        ax2.plot(sorted_latencies, cdf_probs, '.-')
+        ax2.set_xlabel('delay (rounds)')
+        ax2.set_ylabel('CDF')
+        ax2.set_title(topic + " Range: " + str(bot_left_epoch_range))
+
+        sorted_latencies, cdf_probs = x_y_axis_creator.get_latencies_and_cdfs_with_epoch_ranges(tids_and_latencies,
+                                                                                                topic_trans_gen[topic],
+                                                                                                bot_mid_epoch_range)
+        print("topic", topic, "latency_occurrences", sorted_latencies)
+        print("cdf_probs", cdf_probs)
+        print()
+        ax3.plot(sorted_latencies, cdf_probs, '.-')
+        ax3.set_xlabel('delay (rounds)')
+        ax3.set_ylabel('CDF')
+        ax3.set_title(topic + " Range: " + str(bot_mid_epoch_range))
+
+        sorted_latencies, cdf_probs = x_y_axis_creator.get_latencies_and_cdfs_with_epoch_ranges(tids_and_latencies,
+                                                                                                topic_trans_gen[topic],
+                                                                                                bot_right_epoch_range)
+        print("topic", topic, "latency_occurrences", sorted_latencies)
+        print("cdf_probs", cdf_probs)
+        print()
+        ax4.plot(sorted_latencies, cdf_probs, '.-')
+        ax4.set_xlabel('delay (rounds)')
+        ax4.set_ylabel('CDF')
+        ax4.set_title(topic + " Range: " + str(bot_right_epoch_range))
+
+        plt.show()
+
+
+class CreateCDFplot:
+    @staticmethod
+    def get_latencies_with_respective_cdf_probs(tids_and_latencies):
+        latency_occurrences = {}
+        latency_occurrences = defaultdict(lambda: 0, latency_occurrences)
+        for tid, latency in tids_and_latencies.items():
+            latency_occurrences[latency] += 1
+
+        cdf_prob = 0
+        total_msgs_sent = sum(latency_occurrences.values())
+        cdf_probs = []
+        for latency in sorted(latency_occurrences):
+            prob = latency_occurrences[latency] / total_msgs_sent
+            cdf_prob += prob
+            cdf_probs.append(cdf_prob)
+
+        return list(sorted(latency_occurrences.keys())), cdf_probs
+
+    def get_latencies_and_cdfs_with_epoch_ranges(self, tids_and_latencies, trans_gens,
+                                                 epoch_range: Tuple[int, int]):
+        start_epoch = epoch_range[0]
+        end_epoch = epoch_range[1]
+        print("epoch_range", epoch_range)
+        in_range_tids_and_latencies = {}
+        temp_gens = []
+
+        for tid, gen_epoch in trans_gens.items():
+            if start_epoch <= gen_epoch <= end_epoch:
+                in_range_tids_and_latencies[tid] = tids_and_latencies[tid]
+                temp_gens.append(gen_epoch)
+        print("temp_gens", temp_gens)
+        return self.get_latencies_with_respective_cdf_probs(in_range_tids_and_latencies)
 
 
 def latency(acc_recv_msg_hist, acc_gen_msg_hist):
     assert len(acc_recv_msg_hist) == len(acc_gen_msg_hist)
     latency_hist = []
     for r, acc_recv_msg in enumerate(acc_recv_msg_hist):
-        if (acc_recv_msg == 0):
+        if acc_recv_msg == 0:
             latency_hist.append(0)
         else:
             if old_recv_msg == acc_recv_msg:
@@ -298,6 +418,7 @@ def latency(acc_recv_msg_hist, acc_gen_msg_hist):
     assert len(latency_hist) == len(acc_recv_msg_hist), "length of latency_hist: {}".format(len(latency_hist))
     return latency_hist
 
+
 def avg_throughput(acc_recv_msg_hist, avg_step=10):
     avg_throughput_hist = []
     for i in range(avg_step-1):
@@ -307,6 +428,7 @@ def avg_throughput(acc_recv_msg_hist, avg_step=10):
         avg_throughput = (acc_recv_msg_hist[r_end]-acc_recv_msg_hist[r_start]) / avg_step
         avg_throughput_hist.append(avg_throughput)
     return avg_throughput_hist
+
 
 def dump_node(snapshots, node_id, data_dir=None):
     pass
@@ -345,6 +467,7 @@ def dump_node(snapshots, node_id, data_dir=None):
                 # worksheet.write(r+1, peers[s], node.scores[s])
     # workbook.close()
 
+
 def dump_graph(snapshot):
     # dump the graph state of a snapshot to a file
     r = snapshot.round
@@ -374,12 +497,14 @@ def dump_graph(snapshot):
         f.write('\n')
     f.close()
 
+
 def profile_node(snapshots, u):
     mesh_hist = []
     for snapshot in snapshots:
         node = snapshot.nodes[u]
         mesh_hist.append(len(node.mesh))
     return mesh_hist
+
 
 def analyze_network(snapshots):
     num_links_hist = []
@@ -410,12 +535,14 @@ def analyze_network(snapshots):
 
     return num_links_hist, num_links_with_trans_hist, num_trans_hist, finished_trans_hist
 
+
 def plot_links_info(ax, num_links_hist, num_links_with_trans_hist):
     ax.plot(num_links_hist, 'g')
     ax.plot(num_links_with_trans_hist, 'b')
     num_link_patch = mpatches.Patch(color='green', label='num link')
     num_trans_link_patch = mpatches.Patch(color='blue', label='num link with trans')
     ax.legend(handles=[num_link_patch, num_trans_link_patch])
+
 
 def plot_links_trans_info(ax, num_trans_hist, finished_trans_hist):
     ax.plot(num_trans_hist, 'g')
@@ -424,8 +551,10 @@ def plot_links_trans_info(ax, num_trans_hist, finished_trans_hist):
     finished_patch = mpatches.Patch(color='blue', label='finished trans')
     ax.legend(handles=[num_patch, finished_patch])
 
+
 def convert_round_to_sec_unit(x):
     return [trans_per_round*ROUND_PER_SEC*TRANS_MSG_LEN for trans_per_round in x]
+
 
 def plot_avg_throughput(ax, avg_throughput, avg_gen):
     x_points = [ i for i in range(len(avg_throughput))]
@@ -439,6 +568,7 @@ def plot_avg_throughput(ax, avg_throughput, avg_gen):
     avg_gen_patch = mpatches.Patch(color='blue', label='avg trans gen rate')
     ax.legend(handles=[avg_throughput_patch, avg_gen_patch])
 
+
 def plot_graph_deg(ax, degrees_mean, degrees_max, degrees_min):
     ax.plot(degrees_mean, 'b', degrees_max, 'r', degrees_min, 'g') 
     ax.yaxis.set_ticks(range(0, max(degrees_max)+1, 1))
@@ -448,9 +578,11 @@ def plot_graph_deg(ax, degrees_mean, degrees_max, degrees_min):
     mean_patch = mpatches.Patch(color='blue', label='mean')
     ax.legend(handles=[max_patch,min_patch,mean_patch])
 
+
 def plot_components(ax, honest_components):
-     ax.plot(honest_components)
-     ax.set(ylabel='# honest components', xlabel='round')
+    ax.plot(honest_components)
+    ax.set(ylabel='# honest components', xlabel='round')
+
 
 def plot_eclipse_attack(snapshots, targets, topic):
     degrees_mean, degrees_max, degrees_min = get_degrees(snapshots)
@@ -463,7 +595,6 @@ def plot_eclipse_attack(snapshots, targets, topic):
     mesh_hist_0 = profile_node(snapshots, 0)
 
     fig, axs = plt.subplots(3)
-    
 
     # print(num_trans_hist)
     plot_components(axs[0], honest_components)
@@ -485,9 +616,6 @@ def plot_eclipse_attack(snapshots, targets, topic):
     # axs[1].plot(x_points, eclipse_hist_out, color='blue')
     # axs[1].set(ylabel='target node - num honest mesh node', xlabel='round')
     # axs[1].legend(handles=[in_conn, out_conn])
-
-
-
     
     # max_y = max(max(avg_gen_hist), max(avg_throughput_hist))
     # axs[2].yaxis.set_ticks(range(0, int(max_y)+1, 0.5))
@@ -511,21 +639,19 @@ def analyze_snapshot(snapshots):
     min_patch = mpatches.Patch(color='green', label='min')
     mean_patch = mpatches.Patch(color='blue', label='mean')
     axs[0].legend(handles=[max_patch,min_patch,mean_patch])
-    #axs[0].title.set_text("cumulative freeze")   
+    # axs[0].title.set_text("cumulative freeze")
     
     target = 1
     eclipse_hist_in, eclipse_hist_out = analyze_eclipse(snapshots, target)
     
-    # number of connectted component
-    x_points = [ i for i in range(len(degrees_mean))]
+    # number of connected component
+    x_points = [i for i in range(len(degrees_mean))]
     axs[1].plot(x_points, eclipse_hist_in, color='green')
     axs[1].plot(x_points, eclipse_hist_out, color='blue')
     axs[1].set(ylabel='target node - num honest mesh node', xlabel='round')
     in_conn = mpatches.Patch(color='green', label='honest incoming connection')
     out_conn = mpatches.Patch(color='blue', label='honest outgoing connection')
     axs[1].legend(handles=[in_conn, out_conn])
-
-
     
     axs[2].plot(x_points, honest_components)
     axs[2].set(ylabel='# honest components', xlabel='round')
@@ -571,6 +697,7 @@ def analyze_snapshot(snapshots):
             # trans_recv.pop(tid, None)
         # acc_recv_msg_hist.append(len(reached90_transid))
         # acc_gen_msg_hist.append(acc_gen_msg)
+
 
 def visualize_network(nodes, draw_nodes='all'):
     subset_color = {NodeType.PUB: 'limegreen', NodeType.LURK: 'yellow', NodeType.SYBIL: 'red'}
@@ -668,6 +795,7 @@ def print_node(t, node, sybils, nodes):
         else:
             print("\033[91m" + data + "\033[0m")
 
+
 # last snapshot
 def print_target_info(snapshot, targets):
     nodes = snapshot.nodes
@@ -685,6 +813,7 @@ def print_sybil(u, sybil):
         attempts=sybil.attempts, 
         channels=sybil.channels))
 
+
 def print_sybils(snapshot, adversary):
     sybils = snapshot.sybils
     avail_channels = []
@@ -694,6 +823,7 @@ def print_sybils(snapshot, adversary):
     print("\t\tSybils  ", "Round", snapshot.round, "  avail channel", avail_channels)
     for u, sybil in sybils.items():
         print_sybil(u, sybil)
+
 
 def get_eclipsed_target(snapshots, targets):
     hist = []
@@ -710,6 +840,7 @@ def get_eclipsed_target(snapshots, targets):
         hist.append(eclipsed)
     return hist
 
+
 def get_eclipsed_ratio(snapshots, targets):
     hist = []
     for snapshot in snapshots:
@@ -721,7 +852,6 @@ def get_eclipsed_ratio(snapshots, targets):
                 num_mesh += 1
                 if peer in snapshot.sybils:
                     num_eclipsed += 1
-
         
         hist.append(float(num_eclipsed)/num_mesh)
     return hist
@@ -732,6 +862,7 @@ def write_eclipse_list(data, filename, dirname):
     with open(filepath, 'w') as w:
         for i, j in enumerate(data):
             w.write(str(i) + " " + str(len(j)) + "\n ")
+
 
 def plot_summery(snapshots, data, data1, filename, dirname, num_targets):
     num_eclipsed_list = [len(i) for i in data]
@@ -780,6 +911,7 @@ def plot_summery(snapshots, data, data1, filename, dirname, num_targets):
     plt.show()
     fig.savefig(filepath)
 
+
 def plot_eclipse_list(data, data1, filename, dirname, num_targets):
     num_eclipsed_list = [len(i) for i in data]
     fig, axs = plt.subplots(2)
@@ -795,6 +927,7 @@ def plot_eclipse_list(data, data1, filename, dirname, num_targets):
     plt.show()
     fig.savefig(filepath)
 
+
 def plot_eclipse_ratio_list(data, filename, dirname, num_targets):
     fig, ax = plt.subplots(1)
     filepath = dirname + '/' + filename
@@ -804,6 +937,7 @@ def plot_eclipse_ratio_list(data, filename, dirname, num_targets):
     plt.show()
     plt.savefig(filepath)
 
+
 def analyze_freezer(snapshots):
     freeze_hist = []
     prev_freeze_count = 0
@@ -812,7 +946,6 @@ def analyze_freezer(snapshots):
         curr_round_freeze_count = network.freeze_count - prev_freeze_count
         freeze_hist.append(curr_round_freeze_count)
         prev_freeze_count = network.freeze_count
-
 
     accumulate = [0]
     acc = 0
