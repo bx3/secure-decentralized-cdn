@@ -11,6 +11,23 @@ import numpy as np
 import sys
 from typing import List
 from typing import Tuple
+import os
+import pickle
+
+def load_snapshots(dirname):
+    snapshots = []
+    files = os.listdir(dirname)
+    # sort file by index
+    file_num = {}
+    for f in files:
+        file_num[f] = int(f[8:]) # first 8 char is snapshot
+    sorted_files = [f for f, num in sorted(file_num.items(), key=lambda item: item[1]) ]
+    for s in sorted_files:
+        sp = os.path.join(dirname, s)
+        with open(sp, 'rb') as f:
+            data = pickle.load(f)
+            snapshots += data
+    return snapshots
 
 
 def get_degrees(snapshots):
@@ -144,6 +161,7 @@ def throughput_90(snapshots):
         acc_gen_msg = 0
         for u, state in nodes.items():
             for tid, tp in state.trans_record: 
+                print(tid, tp)
                 trans_nodes[tid].add(u)
             acc_gen_msg += state.gen_trans_num
         num_90_msg = 0
@@ -155,6 +173,38 @@ def throughput_90(snapshots):
         acc_recv_msg_hist.append(num_90_msg)
         acc_gen_msg_hist.append(acc_gen_msg)
     return acc_recv_msg_hist, acc_gen_msg_hist
+
+def trans_latency_90_var(snapshots, topic):
+    trans_latency = defaultdict(dict) # key is transid, value is a list of latency
+    trans_gen_r = {}
+
+    for snapshot in snapshots:
+        nodes = snapshot.nodes
+        for u, actors in nodes.items():
+            if topic in actors:
+                actor = actors[topic]
+                for tid, tp in actor.transids.items():
+                    lat = tp[0] - tp[1] 
+                    if u not in trans_latency[tid]:
+                        trans_latency[tid][u] = lat
+                        trans_gen_r[tid] = tp[1]
+                    else:
+                        assert(trans_gen_r[tid]== tp[1])
+    num_honest_node, honest_nodes = get_num_honest(snapshots[-1], topic)
+
+    trans_90_lat = {}
+    for tid, latencies in trans_latency.items():
+        # lats = [l for a, l in latencies]
+        lats = latencies.values()
+        sorted_lat = sorted(lats)
+        if len(sorted_lat) >= 10:
+            lat90 = sorted_lat[int(round(len(sorted_lat)*9.0/10.0)) - 1]
+        else:
+            lat90 = sorted_lat[int(len(sorted_lat)*9.0/10.0)]
+        trans_90_lat[tid] = lat90
+    return trans_90_lat, trans_gen_r
+
+
 
 def trans_latency_90(snapshots, topic):
     trans_latency = defaultdict(list) # key is transid, value is a list of latency
@@ -197,7 +247,7 @@ def plot_topics_latency(snapshots, topics, dirname):
     max_epoch = len(snapshots)
     for topic in topics:
         components, honest_components = get_components(snapshots, topic)
-        topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90(snapshots, topic)
+        topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90_var(snapshots, topic)
     plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch, dirname)
 
 def get_cmap(n, name='hsv'):
@@ -249,7 +299,7 @@ def plot_topic_latency(topic_latencies, topic_trans_gen, topics, max_epoch, dirn
         # num_trans_link_patch = mpatches.Patch(color='blue', label='num link with trans')
         # axs[i].legend(handles=[num_link_patch, num_trans_link_patch])   
     plt.tight_layout()
-    plt.savefig(dirname + '/instanceous')
+    plt.savefig(dirname + '/instantaneous')
 
 
 
@@ -818,7 +868,7 @@ def plot_topics_latency_cdfs(snapshots, topics, dirname, epoch_ranges: List[Tupl
     bot_right_epoch_range = epoch_ranges[3]
 
     for topic in topics:
-        topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90(snapshots, topic)
+        topic_latencies[topic], topic_trans_gen[topic] = trans_latency_90_var(snapshots, topic)
 
     # print("epoch_ranges", reg_epoch_range, bot_left_epoch_range, bot_mid_epoch_range, bot_right_epoch_range)
 

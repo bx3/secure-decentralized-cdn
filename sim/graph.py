@@ -17,9 +17,9 @@ State = namedtuple('State', [
     'mesh', 
     'peers', 
     'out_msgs', 
-    'scores', 
-    'scores_decompose',
-    'trans_record', 
+    # 'scores', 
+    # 'scores_decompose',
+    # 'trans_record', 
     'transids', 
     'gen_trans_num', 
     'out_conn']
@@ -144,7 +144,7 @@ class Node:
                 sys.exit(1)
 
             # update adaptor for every transaction
-            if mtype == MessageType.TRANS and src in self.actors[topic].mesh:
+            if self.update_method=='coll-subset' and mtype == MessageType.TRANS and src in self.actors[topic].mesh:
                 self.adaptor.add_time(msg, curr_r)
 
             actor_msgs[topic].append(msg)
@@ -193,7 +193,7 @@ class TopicActor:
         self.heartbeat_period = heartbeat_period
         self.gen_trans_num = 0
 
-        self.round_trans_ids = set() # keep track of msgs used for analysis
+        self.round_trans_ids = {} # keep track of msgs used for analysis
         self.trans_record = {}  # key is trans_id, value is (recv r, send r) send_r is the first born time
         self.last_heartbeat = -1
         self.update_method = update_method
@@ -222,7 +222,7 @@ class TopicActor:
         if self.update_method == 'individual':
             self.schedule_heartbeat(r)
         # background peer local view update
-        # self.run_scores_background(r)
+        self.run_scores_background(r)
         self.round_trans_ids.clear()
         in_msgs = msgs.copy()
         # handle msgs 
@@ -310,7 +310,7 @@ class TopicActor:
         if trans_id not in self.trans_record:
             self.msg_ids.add(mid)
             self.scores[src].update_p2()
-            self.round_trans_ids.add(trans_id)
+            self.round_trans_ids[trans_id] = (r, send_r)
             # push it to other peers in mesh if not encountered
             for peer in self.mesh:
                 if peer != src:
@@ -375,8 +375,9 @@ class TopicActor:
         all_mesh_peers = self.mesh.keys()
         for u in list(all_mesh_peers):
             counters = self.scores[u]
-            if counters.get_score() < 0:
-                counters.update_p3b(-counters.get_score())
+            score = counters.get_score()
+            if score < 0:
+                counters.update_p3b(-score)
                 # print(self.id, "prune a peer", u, 'due to neg score')
                 self.prune_peer(u, r)
 
@@ -584,22 +585,22 @@ class TopicActor:
 
     # return State, remember to return a copy
     def get_states(self):
-        scores_value = {} # key is peer
+        # scores_value = {} # key is peer
 
-        scores_decompose = {}
-        for peer in self.scores:
-            scores_value[peer] = self.scores[peer].get_score()
-            counters = self.scores[peer]
-            s = ScoreRecord(
-                round(counters.get_score1(), 2),
-                round(counters.get_score2(), 2),
-                round(counters.get_score3a(), 2),
-                round(counters.get_score3b(), 2),
-                round(counters.get_score4(), 2),
-                round(counters.get_score5(), 2),
-                round(counters.get_score6(), 2),
-            )
-            scores_decompose[peer] = s
+        # scores_decompose = {}
+        # for peer in self.scores:
+            # scores_value[peer] = self.scores[peer].get_score()
+            # counters = self.scores[peer]
+            # s = ScoreRecord(
+                # round(counters.get_score1(), 2),
+                # round(counters.get_score2(), 2),
+                # round(counters.get_score3a(), 2),
+                # round(counters.get_score3b(), 2),
+                # round(counters.get_score4(), 2),
+                # round(counters.get_score5(), 2),
+                # round(counters.get_score6(), 2),
+            # )
+            # scores_decompose[peer] = s
 
         out_conn = []
         for peer, direction in self.mesh.items():
@@ -613,9 +614,9 @@ class TopicActor:
                 self.mesh.copy(), 
                 self.peers.copy(), 
                 self.out_msgs.copy(), 
-                scores_value, 
-                scores_decompose,
-                self.trans_record.copy(), 
+                # scores_value, 
+                # scores_decompose,
+                # self.trans_record.copy(), 
                 self.round_trans_ids.copy(), 
                 self.gen_trans_num,
                 out_conn

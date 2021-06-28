@@ -30,13 +30,13 @@ class PeerScoreCounter:
 
         # background
         self.decay_r = 0
+        self.fake_score = 0
 
     def init_r(self, r):
         self.r = r
 
     def run_background(self, curr_r):
         self.update_p1(curr_r)
-        self.get_score()
 
         # Measure Mesh Message Delivery Rate (P3a)
         if self.mesh_r > 9:

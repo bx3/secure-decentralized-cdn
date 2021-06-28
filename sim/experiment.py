@@ -9,17 +9,20 @@ import attacks
 import json
 import sys
 import time
+import os
+import pickle
 
 class Snapshot:
     def __init__(self):
         self.round = 0
         self.nodes = {} # key:node id value: node state
         self.sybils = {}
-        self.all_nodes = {}
+        # self.all_nodes = {}
         self.network = None # message queue in for each node
 
+
 class Experiment:
-    def __init__(self, setup_json, heartbeat, update_method):
+    def __init__(self, setup_json, heartbeat, update_method, dirname):
         self.snapshots = []
         self.nodes = {}  # honest nodes
         self.sybils = {}
@@ -28,8 +31,17 @@ class Experiment:
         self.network = Network(setup_json)
         self.heartbeat_period = heartbeat
 
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
+
+        self.snapshot_dir = os.path.join(dirname, 'snapshots')
+        self.snapshot_index = 0
+        if not os.path.exists(self.snapshot_dir):
+            os.makedirs(self.snapshot_dir)
+
         # log file
-        self.log_file = 'data/log'
+        self.log_file = self.snapshot_path = os.path.join(dirname, 'log.txt')
         self.update_method = update_method
     
         # load both nodes and sybils nodes
@@ -41,43 +53,91 @@ class Experiment:
         # eclipse attack
         self.target = -1
 
+        self.copy_time = 0
+        self.register_time = 0
+
         with open(self.log_file, 'w') as w:
             w.write("num_node" + str(len(self.nodes)) + '\n')
 
+    def save_snapshots(self, snapshots):
+        filename = os.path.join(self.snapshot_dir, 'snapshot'+str(self.snapshot_index))
+        self.snapshot_index += 1
+        with open(filename, 'wb') as f:
+            pickle.dump(snapshots, f)
 
     # # # # # # # # 
     #  main loop  #
     # # # # # # # # 
     def start(self, epoch, start_round=0, attack_strategy='None', targets=[]):
         curr_shots = [] 
+        start_time = time.time()
+        heartbeat_time = start_time
+
+        push_tot = 0
+        deliver_tot = 0
+        handle_tot = 0
+        snap_tot = 0
         for r in range(start_round, start_round+epoch):
             # debug
-            if r % HEARTBEAT == 0:
-                print("****\t\theartbeat generated", r, HEARTBEAT)
+            if r!=0 and r % HEARTBEAT == 0:
+                print("****\t\theartbeat generated", r, 'at', time.time()-heartbeat_time)
+                print("****\t\tpush tot", push_tot)
+                print("****\t\t\tcopy_time", self.copy_time)
+                print("****\t\t\tregister_time", self.register_time)
+
+
+                print("****\t\tdeliver tot", deliver_tot)
+                print("****\t\thandle tot", handle_tot)
+                print("****\t\tsnap_tot", snap_tot)
+                push_tot = 0
+                deliver_tot = 0
+                handle_tot = 0
+                snap_tot = 0
+                self.copy_time = 0
+                self.register_time = 0
+
+                heartbeat_time = time.time()
+                self.save_snapshots(curr_shots)
+                curr_shots.clear()
 
             # start attack
             # self.attack_management(r, self.network, targets)
 
             # network store messages from honest nodes
             # self.push_sybil_msgs(r)
+            t1 = time.time()
             self.push_honest_msgs(r)
-
+            t2 = time.time()
+            push_tot += t2 - t1
             # if r > 0:
                 # self.attack_freeze_network(r)
             
             # network deliver msgs
             self.deliver_msgs(r)
+            t3 = time.time()
+            deliver_tot += t3 - t2
+
             # honest node retrieve msgs 
             self.honest_nodes_handle_msgs(r)
+            t4 = time.time()
+            handle_tot += t4 - t3
+
             # self.sybil_nodes_handle_msgs(r)
 
             # assume sybils have powerful internal network, node processing speed
             # self.sybil_use_fast_internet(r) 
 
             # take snapshot
-            curr_shots.append(self.take_snapshot(r))
+            shot = self.take_snapshot(r)
+            t5 = time.time()
+            snap_tot += t5 - t4
+
+            curr_shots.append(shot)
             #print("round", r, "finish using ", time.time()-start)
-        return curr_shots
+        self.save_snapshots(curr_shots)
+        print("****\t\tExp finishes at", time.time()-start_time)
+
+        return self.snapshot_index 
 
     def push_sybil_msgs(self, r):
         for u, node in self.sybils.items():
@@ -90,8 +150,13 @@ class Experiment:
         for u, node in self.nodes.items():
             # if network has too many messages, stop
             # if not self.network.is_uplink_congested(u):
+            t1 = time.time()
             msgs = node.send_msgs() 
+            t2 = time.time()
+            self.copy_time += t2 - t1
             self.network.push_msgs(msgs, curr_r)
+            t3 = time.time()
+            self.register_time += t3 - t2
 
     def attack_management(self, r, network, targets):
         self.adversary.add_targets(targets) # some hack
@@ -143,12 +208,11 @@ class Experiment:
         for u, node in self.nodes.items():
             snapshot.nodes[u] = node.get_states()
 
-        for u, sybil in self.sybils.items():
-            snapshot.sybils[u] = sybil.get_states()
-
-        snapshot.all_nodes = {**(snapshot.nodes), **(snapshot.sybils)}
+        # for u, sybil in self.sybils.items():
+            # snapshot.sybils[u] = sybil.get_states()
+        snapshot.sybils = {}
         # get network 
-        snapshot.network = self.network.take_snapshot()
+        # snapshot.network = self.network.take_snapshot()
         
         self.snapshots.append(snapshot)
         return snapshot

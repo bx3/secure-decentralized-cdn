@@ -59,30 +59,17 @@ elif cmd == "run":
     epoch = int(sys.argv[3])
     dirname = sys.argv[4]
     update_method = sys.argv[5]
+    print('epoch', epoch)
 
     if not os.path.exists(dirname):
         os.makedirs(dirname)
 
     summery = gn.parse_summery(setup)
     heartbeat = HEARTBEAT
-    gossipsub = Experiment(setup, heartbeat, update_method)
-    snapshots = gossipsub.start(epoch)
+    gossipsub = Experiment(setup, heartbeat, update_method, dirname)
+    num_snapshots = gossipsub.start(epoch)
+    print(num_snapshots, 'snapshots saved')
 
-    # analyzer.plot_eclipse_attack(snapshots, [1])
-    topics = [gn.get_topic_type(t) for t in summery['TOPICS']]
-    analyzer.plot_topics_latency(snapshots, topics, dirname)
-   
-    plot_indices = [int(i*epoch/3) for i in range(4)]
-    plot_slices = [(0, epoch)]
-    for i in range(1,4):
-        plot_slices.append((plot_indices[i-1], plot_indices[i]))
-    analyzer.plot_topics_latency_cdfs(snapshots, topics, dirname, plot_slices)
-
-    # analyze_network(snapshots)
-    # analyze_snapshot(snapshots)
-    # dump_graph(snapshots[50])
-    # kdump_node(snapshots, 1)
-    #  analyzer.dump_node(snapshots, 99)
 elif cmd == "demo":
     if len(sys.argv) < 2:
         print("require arguments")
@@ -168,61 +155,24 @@ elif cmd == "term":
         # analyzer.print_sybil(91, snapshots[-1].sybils[91]) debug
         # analyzer.print_node(1, snapshots[-1].nodes[1], snapshots[-1].sybils, snapshots[-1].nodes) 
 elif cmd == "plot":
-    if len(sys.argv) < 7:
-        print("require arguments: plot name[string] seed[int] targets[intList]")
-        sys.exit(0)
+    if len(sys.argv) < 4:
+        print('Require args')
+        sys.exit(1)
     setup = sys.argv[2]
-    filename = sys.argv[3]
-    seed = int(sys.argv[4])
-    random.seed(seed)
-    targets_str = sys.argv[5:]
-    targets =[int(i) for i in targets_str]
+    epoch = int(sys.argv[3])
+    dirname = sys.argv[4]
 
-    heartbeat = HEARTBEAT
-    gossipsub = Experiment(setup, heartbeat)
-
-    if not os.path.isdir('data'):
-        os.mkdir('data')
-
-    dirname = 'data'
-    filepath = dirname + '/' + filename
-
-    total_rounds = 0
-    snapshots = []
-    eclipsed = set() 
-    eclipsed_num_hist = []
-    eclipsed_ratio_hist = []
-    epoch = 1 # int(HEARTBEAT /4 _
-    is_first = True
-    while len(eclipsed) < len(targets) and total_rounds<2000:
-        new_shots = None
-        if is_first:
-            new_shots = gossipsub.start(epoch, total_rounds, 'eclipse', targets)
-            is_first = False
-        else:
-            new_shots = gossipsub.start(epoch, total_rounds, 'eclipse', [])
-
-        eclipsed_list = analyzer.get_eclipsed_target(new_shots, targets)
-        eclipsed_ratio_list = analyzer.get_eclipsed_ratio(new_shots, targets)
-        snapshots = snapshots + new_shots
-        total_rounds += epoch
-        eclipsed_num_hist += eclipsed_list
-        eclipsed_ratio_hist += eclipsed_ratio_list
-        eclipsed = eclipsed_num_hist[-1]
-        analyzer.print_target_info(snapshots[-1], targets)
-    if len(eclipsed) < len(targets):
-        print("not eclipsed after 2000 rounds")
-
-        
-    # print(gossipsub.adversary.num_freeze_count)
-
-    # analyzer.analyze_freezer(snapshots)
-
-    # analyzer.write_eclipse_list(eclipsed_num_hist, filename, dirname)
-    # analyzer.plot_summery(snapshots, eclipsed_num_hist, eclipsed_ratio_hist, filename, dirname, len(targets))
-    # analyzer.plot_eclipse_ratio_list(eclipsed_ratio_hist, filename, dirname, len(targets))
-    # analyzer.print_target_info(snapshots[-1], targets)
-    # analyzer.print_sybils(snapshots[-1])
+    summery = gn.parse_summery(setup)
+    topics = [gn.get_topic_type(t) for t in summery['TOPICS']]
+    snapshots = analyzer.load_snapshots(os.path.join(dirname, 'snapshots'))
+    analyzer.plot_topics_latency(snapshots, topics, dirname)
+   
+    plot_indices = [int(i*epoch/3) for i in range(4)]
+    plot_slices = [(0, epoch)]
+    for i in range(1,4):
+        plot_slices.append((plot_indices[i-1], plot_indices[i]))
+    analyzer.plot_topics_latency_cdfs(snapshots, topics, dirname, plot_slices)
+    
 elif cmd == "gen-network-special":
     if len(sys.argv) < 14:
         print("require arguments")
@@ -288,6 +238,63 @@ elif cmd == 'gen-specs':
     is_clusterized = sys.argv[6] == 'true'
     n_non_cluster = int(sys.argv[7])
     gn.gen_specs(n_topic, n_pub_per_topic, n_lurk_per_topic, n_sybil_per_topic, is_clusterized, n_non_cluster)
+
+elif cmd == 'old-plot':
+    if len(sys.argv) < 7:
+        print("require arguments: plot name[string] seed[int] targets[intList]")
+        sys.exit(0)
+    setup = sys.argv[2]
+    filename = sys.argv[3]
+    seed = int(sys.argv[4])
+    random.seed(seed)
+    targets_str = sys.argv[5:]
+    targets =[int(i) for i in targets_str]
+
+    heartbeat = HEARTBEAT
+    gossipsub = Experiment(setup, heartbeat)
+
+    if not os.path.isdir('data'):
+        os.mkdir('data')
+
+    dirname = 'data'
+    filepath = dirname + '/' + filename
+
+    total_rounds = 0
+    snapshots = []
+    eclipsed = set() 
+    eclipsed_num_hist = []
+    eclipsed_ratio_hist = []
+    epoch = 1 # int(HEARTBEAT /4 _
+    is_first = True
+    while len(eclipsed) < len(targets) and total_rounds<2000:
+        new_shots = None
+        if is_first:
+            new_shots = gossipsub.start(epoch, total_rounds, 'eclipse', targets)
+            is_first = False
+        else:
+            new_shots = gossipsub.start(epoch, total_rounds, 'eclipse', [])
+
+        eclipsed_list = analyzer.get_eclipsed_target(new_shots, targets)
+        eclipsed_ratio_list = analyzer.get_eclipsed_ratio(new_shots, targets)
+        snapshots = snapshots + new_shots
+        total_rounds += epoch
+        eclipsed_num_hist += eclipsed_list
+        eclipsed_ratio_hist += eclipsed_ratio_list
+        eclipsed = eclipsed_num_hist[-1]
+        analyzer.print_target_info(snapshots[-1], targets)
+    if len(eclipsed) < len(targets):
+        print("not eclipsed after 2000 rounds")
+
+        
+    # print(gossipsub.adversary.num_freeze_count)
+
+    # analyzer.analyze_freezer(snapshots)
+
+    # analyzer.write_eclipse_list(eclipsed_num_hist, filename, dirname)
+    # analyzer.plot_summery(snapshots, eclipsed_num_hist, eclipsed_ratio_hist, filename, dirname, len(targets))
+    # analyzer.plot_eclipse_ratio_list(eclipsed_ratio_hist, filename, dirname, len(targets))
+    # analyzer.print_target_info(snapshots[-1], targets)
+    # analyzer.print_sybils(snapshots[-1])
 else:
     print('Require a valid subcommand', cmd)
 

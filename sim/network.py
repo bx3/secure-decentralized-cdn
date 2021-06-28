@@ -1,8 +1,10 @@
 from config import *
 from collections import namedtuple
+from collections import defaultdict
 import math
 import sys
 import random
+import time
 from messages import Message
 from messages import MessageType
 from messages import AdvRate
@@ -14,11 +16,11 @@ import geopy.distance
 
 NetworkState = namedtuple('NetworkState', ['links', 'uplinks', 'downlinks', 'freeze_count'])
 LinkSnapshot = namedtuple('LinkSnapshot', ['num_msg', 'num_trans', 'finished_trans', 'up_remains', 'down_remains'])
-
+# geopy.distance.geodesic(up_point, down_point).km / SPEED_OF_LIGHT *1000 #ms
 # direcdtion sensitive
 # assume network has infinite buffer volume
 class LinkState:
-    def __init__(self, up_bd, down_bd, msg, up_point, down_point):
+    def __init__(self, up_bd, down_bd, msg, up_point, down_point, prop_delay):
         self.up_limit = up_bd
         self.down_limit = down_bd
         self.up_remain = msg.length 
@@ -30,7 +32,7 @@ class LinkState:
         self.frozen = 0 # count down to be active
         self.up_point = up_point
         self.down_point = down_point
-        self.prop_delay = geopy.distance.geodesic(up_point, down_point).km / SPEED_OF_LIGHT *1000 #ms
+        self.prop_delay = prop_delay
         self.elapsed = 0  # ms
 
     def get_link_snapshot(self):
@@ -140,27 +142,49 @@ class LinkState:
         return completed
 
 class Controller:
-    def __init__(self):
+    def __init__(self, num_node, points):
         self.links = {} # key is node pair, value is state
-        self.msg_uplink = {} # key is node id, value is a set of dst that uses this up link
-        self.msg_downlink = {} # same as above
+        # self.msg_uplink = defaultdict(set) # key is node id, value is a set of dst that uses this up link
+        self.msg_uplink_list = [set() for i in range(num_node)]
+        # self.msg_downlink = defaultdict(set) # same as above
+        self.msg_downlink_list = [set() for i in range(num_node)]
+        dict_init_time = time.time()
+        self.dists = self.init_dist_dict(points)
+        print('Finish dist init using', time.time() - dict_init_time)
+        
 
-    def feed_link(self, msg, up_bd_lim, down_bd_lim, up_point, down_point):
-        mtype, mid, src, dst, _, length, payload, _, _ = msg
+    def init_dist_dict(self, points):
+        dist_dict = {}
+        nodeids = list(points.keys())
+        num_node = len(nodeids)
+        for i in range(num_node):
+            u = nodeids[i]
+            up_point = points[u]
+            dist_dict[(u,u)] = 0
+            for j in range(i+1, num_node):
+                v = nodeids[j]
+                down_point = points[v]
+                dist = 0 #geopy.distance.geodesic(up_point, down_point).km / SPEED_OF_LIGHT *1000 #ms
+                dist_dict[(u,v)] = dist 
+                dist_dict[(v,u)] = dist 
+        return dist_dict
+
+
+    def feed_link(self, msg, src, dst, up_bd_lim, down_bd_lim, up_point, down_point):
         pair = (src, dst)
         if pair not in self.links:
-            self.links[pair] = LinkState(up_bd_lim, down_bd_lim, msg, up_point, down_point)
+            dist = self.dists[pair]
+            self.links[pair] = LinkState(up_bd_lim, down_bd_lim, msg, up_point, down_point, dist)
             self.mark_msg_to_link(src, dst)
         else:
-            link = self.links[pair]
-            link.feed_msg(msg)
+            self.links[pair].feed_msg(msg)
 
     # assign bandwidth for up down , with equal bandwidth per node
     def assign_bandwidth_equal(self, link, pair):
         src, dst = pair
-        num_up_msg = len(self.msg_uplink[src])
+        num_up_msg = len(self.msg_uplink_list[src])
         up_bd_per_node = float(link.up_limit) / num_up_msg
-        num_down_msg = len(self.msg_downlink[dst])
+        num_down_msg = len(self.msg_downlink_list[dst])
         down_bd_per_node = float(link.down_limit) / num_down_msg
         return up_bd_per_node, down_bd_per_node
 
@@ -170,7 +194,7 @@ class Controller:
         local_uplink_share = {}
         up_total = 0
         #print(my_link.up_remain, my_link.down_remain)
-        for dst in self.msg_uplink[my_src]:
+        for dst in self.msg_uplink_list[my_src]:
             pair = (my_src, dst)
             link = self.links[pair]
             up_total += link.up_remain
@@ -178,7 +202,7 @@ class Controller:
 
         # in the case when upload is down, i.e. up_remain = 0, but down_remain > 0
         for pair, up_bd in local_uplink_share.items():
-            up_ratio = 1.0/len(self.msg_uplink[my_src])
+            up_ratio = 1.0/len(self.msg_uplink_list[my_src])
             if up_total != 0:
                 up_ratio = up_bd/up_total
             if pair not in uplink_share:
@@ -194,7 +218,7 @@ class Controller:
         my_src, my_dst = my_pair
         local_downlink_share = {}
         down_total = 0
-        for src in self.msg_downlink[my_dst]:
+        for src in self.msg_downlink_list[my_dst]:
             pair = (src, my_dst)
             link = self.links[pair]
             down_total += link.down_remain
@@ -270,30 +294,21 @@ class Controller:
 
     # for calculating shared bandwidth
     def mark_msg_to_link(self, src, dst):
-        if src not in self.msg_uplink:
-            self.msg_uplink[src] = set()
-            self.msg_uplink[src].add(dst)
-        else:
-            self.msg_uplink[src].add(dst)
-
-        if dst not in self.msg_downlink:
-            self.msg_downlink[dst] = set()
-            self.msg_downlink[dst].add(src)
-        else:
-            self.msg_downlink[dst].add(src)
+        self.msg_uplink_list[src].add(dst)
+        self.msg_downlink_list[dst].add(src)
 
     def remove_link(self, src, dst):
-        if src not in self.msg_uplink:
-            print('Error. uplink not found')
+        if len(self.msg_uplink_list[src]) == 0:
+            print('Error. uplink not found', src)
             sys.exit(0)
         else:
-            self.msg_uplink[src].remove(dst)
+            self.msg_uplink_list[src].remove(dst)
 
-        if dst not in self.msg_downlink:
-            print('Error. uplink not found')
+        if  len(self.msg_downlink_list[dst]) == 0:
+            print('Error. downlink not found', dst)
             sys.exit(0)
         else:
-            self.msg_downlink[dst].remove(src)
+            self.msg_downlink_list[dst].remove(src)
 
         pair = (src, dst)
         self.links.pop(pair, None)
@@ -304,10 +319,12 @@ class Network:
         # self.queues = {} # key is node id, value is queues of tagged msg
         self.id = -1 # special id reserved for network
         self.seqno = 0 # sequence number for msgs derived from network i.e. heartbeat
-        self.controller = Controller()
         self.netband = {}
         self.points = {}
-        self.load_network(setup_json)
+        num_node = self.load_network(setup_json)
+
+        self.controller = Controller(num_node, self.points)
+
         self.freeze_count = 0
         self.num_push_msg = 0
 
@@ -329,6 +346,7 @@ class Network:
             else:
                 print('Error. Duplicate id in setup json', u_id)
                 sys.exit(0)
+        return len(nodes)
 
     def is_uplink_congested(self, u):
         if u not in self.controller.msg_uplink:
@@ -363,6 +381,7 @@ class Network:
             _, _, src, dst, _, length, _, _, _ = msg
             self.controller.feed_link(
                     msg, 
+                    src, dst,
                     self.netband[src].up_bd, 
                     self.netband[dst].down_bd, 
                     self.points[src],
@@ -423,8 +442,8 @@ class Network:
 
         state = NetworkState(
             links_shot,
-            self.controller.msg_uplink.copy(),
-            self.controller.msg_downlink.copy(),
+            self.controller.msg_uplink_list.copy(),
+            self.controller.msg_downlink_list.copy(),
             self.freeze_count
             )
         return state
