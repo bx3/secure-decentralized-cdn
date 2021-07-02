@@ -9,8 +9,9 @@ from sim.messages import AdvRate
 from sim.generate_network import parse_nodes
 from sim.generate_network import NetBandwidth
 from sim.generate_network import Point
-import geopy.distance
 
+# import geopy.distance
+from math import radians, cos, sin, asin, sqrt
 
 NetworkState = namedtuple('NetworkState', ['links', 'uplinks', 'downlinks', 'freeze_count'])
 LinkSnapshot = namedtuple('LinkSnapshot', ['num_msg', 'num_trans', 'finished_trans', 'up_remains', 'down_remains'])
@@ -32,14 +33,9 @@ class LinkState:
         self.up_point = up_point
         self.down_point = down_point
 
-        # prop_delay = distance / (signal speed = speed of light)
-        # self.prop_delay = int(math.sqrt((up_point[0]-down_point[0])**2 +
-        #                                 (up_point[1]-down_point[1])**2)/SPEED_OF_LIGHT * 1000)  # ms
-        # print("prop_delay", self.prop_delay)
-        self.prop_delay = 0  # ????? WHY ????? geopy.distance.vincenty(coords_1, coords_2).km
-        upload_coordinate = (up_point[0], up_point[1])
-        download_coordinate = (down_point[0], down_point[1])
-        self.prop_delay = int(geopy.distance.distance(upload_coordinate, download_coordinate).km / SPEED_OF_LIGHT * 1000)
+        # self.prop_delay = geopy.distance.geodesic(up_point, down_point).km / SPEED_OF_LIGHT *1000 #ms
+        self.prop_delay = self.haversine(up_point.y, up_point.x, down_point.y, down_point.x) / SPEED_OF_LIGHT * 1000  # ms
+
         self.elapsed = 0  # ms
 
     def __repr__(self):
@@ -47,6 +43,23 @@ class LinkState:
         print("LinkState's self.elapsed: ", self.elapsed)
         print("LinkState's self.msgs: ", self.msgs)
         return ""
+
+    @staticmethod
+    def haversine(lon1, lat1, lon2, lat2):
+        """
+        Calculate the great circle distance between two points
+        on the earth (specified in decimal degrees)
+        """
+        # convert decimal degrees to radians
+        lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+        # haversine formula
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+        a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+        c = 2 * asin(sqrt(a))
+        # Radius of earth in kilometers is 6371
+        km = 6371 * c
+        return km
 
     def get_link_snapshot(self):
         return LinkSnapshot(
@@ -118,6 +131,7 @@ class LinkState:
 
         return completed
 
+    # update if msgs' elapsed time > prop_delay aka msgs have reached dest so can remove msg
     # SEPARATED INTO up and down, old comment up_bd, down_bd are used in current round
     def update(self, up_bd, down_bd):
         if self.frozen > 0:
@@ -161,21 +175,27 @@ class Controller:
     def __init__(self):
         self.links = {}  # key is node pair, value is state
         self.msg_uplink = {}  # key is node id, value is a set of dst that uses this up link
-        self.msg_downlink = {}  # same as above
+        self.msg_downlink = {}  # ... value is a set of srcs that use this down link
 
+    # creates a link between src and dest when src is sending msg to dest
     def feed_link(self, msg, up_bd_lim, down_bd_lim, up_point, down_point):
         mtype, mid, src, dst, _, length, payload, _, _ = msg
         pair = (src, dst)
         if pair not in self.links:
             self.links[pair] = LinkState(up_bd_lim, down_bd_lim, msg, up_point, down_point)
+
+            # associates a source's upload_bandwidth to its many destinations' download bandwidth and vice versa
             self.mark_msg_to_link(src, dst)
         else:
             link = self.links[pair]
             link.feed_msg(msg)
 
+    # assigns equal upload & download bandwidth depending on # of msgs sent and received respectively
     # assign bandwidth for up down , with equal bandwidth per node
     def assign_bandwidth_equal(self, link, pair):
         src, dst = pair
+
+        # set of dst that uses this up link
         num_up_msg = len(self.msg_uplink[src])
         up_bd_per_node = float(link.up_limit) / num_up_msg
         num_down_msg = len(self.msg_downlink[dst])
@@ -227,19 +247,27 @@ class Controller:
         my_down_bd = downlink_share[my_pair] * my_link.down_limit 
         return my_down_bd
 
+    # gets completed msgs in entire network's connected/linked nodes
     # drain links in one round
     def drain_links(self):
         completed = {}  # msg
 
-        print("\n")
+        # print("\n")
         # network deliver message
         if NETWORK_ASSIGN == "EQUAL":
             for pair, link in self.links.items():
-                print("pair:", pair, "; link:", link)
+                # print("pair:", pair, "; link:", link)
                 src, dst = pair
                 # Equal share
                 up_bd, down_bd = self.assign_bandwidth_equal(link, pair)
+
+                # import time
+                # t1 = time.time()
+                # gets completed msgs that has reached dest node in current link
                 msgs = link.update(up_bd, down_bd)
+                # t2 = time.time()
+                # print("          self.assign_bandwidth_equal(link, pair) time: ", (t2 - t1) * 1e6)
+
                 if dst in completed:
                     completed[dst] += msgs
                 else:
@@ -282,6 +310,7 @@ class Controller:
         for pair in link_to_remove:
             src, dst = pair
             self.remove_link(src, dst)
+
 
     # for calculating shared bandwidth
     def mark_msg_to_link(self, src, dst):
@@ -333,6 +362,7 @@ class Network:
             link.add_freeze_count(frozen_round)
             self.freeze_count += frozen_round
 
+    # adds nodes' download/upload bandwidth and coordinates into Network object
     def load_network(self, setup_json):
         nodes = parse_nodes(setup_json)  # get nodes parameters from json
         for u in nodes:
@@ -342,7 +372,7 @@ class Network:
                 self.netband[u_id] = NetBandwidth(u["upB"], u["downB"])  # add nodes to network's bandwidth
                 self.points[u_id] = Point(u["x"], u["y"])  # where node is located
             else:
-                print('Error. Duplicate id in setup json')
+                print('Error. Duplicate id in setup json', u_id)
                 sys.exit(0)
 
     def is_uplink_congested(self, u):
@@ -387,7 +417,12 @@ class Network:
 
     # return dict with key be dst, value is delivered msgs
     def update(self, adv_priority=True):
+        # import time
+        # t1 = time.time()
+        # gets completed msgs in entire network's connected/linked nodes
         dst_msgs = self.controller.drain_links()
+        # t2 = time.time()
+        # print("     self.controller.drain_links() time: ", (t2 - t1) * 1e6)
         # print("\n\ndst_msgs", dst_msgs)
         
         if adv_priority:

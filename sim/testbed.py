@@ -15,19 +15,20 @@ if __name__ == '__main__':
     np.random.seed(31)
     random.seed(31)
 
+
     if len(sys.argv) < 2:
         print("require subcommand: run, gen-network\n")
-        print("run json epoch[int]")
+        print("run json epoch[int] outdir[str] method[individual/coll-subset]")
         print("gen-network num_pub_per_topic[int] num_lurk[int] num_sybil[int] is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] interval_sec[float] num_topic[int] area_length[int]")
         print("gen-network-real-data is_cold_boot[y/n] init_peer_num[int] down_mean[float] down_std[float] up_mean[float] up_std[float] interval_sec[float]  geocluster-data[str]")
         print("gen-spec num_topic[int] num_pub_per_topic[int] num_lurk[int] num_sybil[int]")
         print("demo json")
-        print('example: ./testbed.py run topo/one_pub.json 100')
-        print('example: ./testbed.py gen-network 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000> topo/two_topic_2_pub.json')
-        print('example: ./testbed.py gen-network-special 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000 y > topo/two_topic_2_pub.json')
-        print('example: ./testbed.py gen-network-real-data input/spec.json n 20 1000000 0 1000000 0 0.1 geocluster.json  > topo/real_data.json')
-        print('example: ./testbed.py gen-spec 4 1 4 0 2')
-        print('example: ./testbed.py demo topo/one_pub.json')
+        print('exmaple: ./testbed.py run topo/one_pub.json 100 output coll-subset')
+        print('exmaple: ./testbed.py gen-network 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000> topo/two_topic_2_pub.json')
+        print('exmaple: ./testbed.py gen-network-special 4 96 0 n 20 1000000 0 1000000 0 0.1 2 20000 y > topo/two_topic_2_pub.json')
+        print('exmaple: ./testbed.py gen-network-real-data specs/spec.json n 20 1000000 0 1000000 0 0.1 input_data/bitcoin.json  > topo/real_data.json')
+        print('exmaple: ./testbed.py gen-specs 4 1 4 0 true 2')
+        print('exmaple: ./testbed.py demo topo/one_pub.json')
         sys.exit()
 
     cmd = sys.argv[1]
@@ -39,7 +40,7 @@ if __name__ == '__main__':
         n_lurk = int(sys.argv[3])
         n_sybil = int(sys.argv[4])
         is_cold_boot = sys.argv[5] == 'y'
-        init_peer_num = int(sys.argv[6])
+        init_peer_num =  int(sys.argv[6])
         down_mean = float(sys.argv[7])
         down_std = float(sys.argv[8])
         up_mean = float(sys.argv[9])
@@ -57,42 +58,39 @@ if __name__ == '__main__':
             num_topic,
             area_length
             )
-        node_attr_setter = SetStandardNodeAttributes(
-                                    is_cold_boot,
-                                    init_peer_num,
-                                    n_pub, n_lurk, n_sybil,
-                                    down_mean, down_std,
-                                    up_mean, up_std,
-                                    prob,
-                                    num_topic,
-                                    area_length)
-        network_generator = StandardGenerateNetwork(node_attr_setter)
-        network_generator.generate_network()
-
     elif cmd == "run":
-        if len(sys.argv) < 3:
+        if len(sys.argv) < 6:
             print("require arguments")
             sys.exit(0)
         setup = sys.argv[2]
         epoch = int(sys.argv[3])
+        dirname = sys.argv[4]
+        update_method = sys.argv[5]
 
-        summery = gn.parse_summery(setup)  # gets summery parameters in a list
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
+        # gets summery parameters in a list
+        summery = gn.parse_summery(setup)
         heartbeat = HEARTBEAT
-        gossipsub = Experiment(setup, heartbeat)
+        gossipsub = Experiment(setup, heartbeat, update_method)
 
         import time
+
         t1 = time.time()
         snapshots = gossipsub.start(epoch)
         t2 = time.time()
         print("gossipsub.start time: ", t2 - t1)
-        # snapshots = gossipsub.start_with_multi_threading(epoch)
-        # print("snapshots", snapshots)
 
         # analyzer.plot_eclipse_attack(snapshots, [1])
         topics = [gn.get_topic_type(t) for t in summery['TOPICS']]
-        analyzer.plot_topics_latency(snapshots, topics)
+        analyzer.plot_topics_latency(snapshots, topics, dirname)
 
-        # analyzer.plot_topics_latency_cdfs(snapshots, topics, [(0, 1000), (0, 333), (333, 666), (666, 1000)])
+        plot_indices = [int(i*epoch/3) for i in range(4)]
+        plot_slices = [(0, epoch)]
+        for i in range(1,4):
+            plot_slices.append((plot_indices[i-1], plot_indices[i]))
+        analyzer.plot_topics_latency_cdfs(snapshots, topics, dirname, plot_slices)
 
         # analyze_network(snapshots)
         # analyze_snapshot(snapshots)
@@ -104,7 +102,7 @@ if __name__ == '__main__':
             print("require arguments")
             sys.exit(0)
         setup = sys.argv[2]
-        heartbeat = HEARTBEAT  # in config.py, HEARTBEAT=.2 sec
+        heartbeat = HEARTBEAT
         gossipsub = Experiment(setup, heartbeat)
 
         if not os.path.isdir('data'):
@@ -324,132 +322,24 @@ if __name__ == '__main__':
         network_generator.generate_network()
 
     elif cmd == "graph_essential_bitnode":
-        import matplotlib.pyplot as plt
-        from collections import namedtuple
-        from itertools import combinations
 
-        class PlotNodes:
-            def __init__(self, nodes_info_from_json):
-                self.nodes_info_from_json = nodes_info_from_json
-                self.topic_to_subscribing_nodes = dict()  # key=continent, value=set of node ids
-                self.node_id_w_its_coordinate = dict()  # key = node id, value = its coordinate
+        from sim.PlotNodesCoordinates import PlotNodes
 
-            # sets topics' subscribing nodes and nodes' coordinates
-            def group_nodes(self, node_id_label="id", node_topic_label="continent",
-                            node_lat_label="latitude", node_long_label="longitude"):
-                Coordinates = namedtuple('Coordinates', ['latitude', 'longitude'])
-
-                for node_info in self.nodes_info_from_json:
-                    node_coordinate = Coordinates(node_info[node_lat_label], node_info[node_long_label])
-                    node_id = int(node_info[node_id_label])
-                    self.node_id_w_its_coordinate[node_id] = node_coordinate
-
-                    topics_list = node_info[node_topic_label]
-                    if isinstance(topics_list, str):  # if only 1 topic that's a str, then put it in a list
-                        topics_list = [topics_list]
-
-                    for topic in topics_list:
-                        if topic not in self.topic_to_subscribing_nodes:
-                            self.topic_to_subscribing_nodes[topic] = {
-                                node_id}  # add topic key and initializes a set w/ node's id
-                        else:
-                            self.topic_to_subscribing_nodes[topic].add(node_id)  # add node id to respective topic's set
-
-            def plot_scatter_plot(self):
-                plotted_topics_labels = []  # used to get legend of topic combinations' intersections that were plotted
-                for combo_len in range(1, len(self.topic_to_subscribing_nodes) + 1):
-                    # find all combos of topics based on current combo length
-                    combos_of_topics = combinations(self.topic_to_subscribing_nodes.keys(), combo_len)
-
-                    # find each topic combination's intersected/common nodes, then plot them
-                    for combo in combos_of_topics:
-
-                        # gets topics' subscribed nodes (in sets) and add them in list_of_sets
-                        list_of_sets = []
-                        topics_label = ""
-                        for topic in combo:
-                            set_of_node_ids = self.topic_to_subscribing_nodes[topic]
-                            list_of_sets.append(set_of_node_ids)
-                            topics_label = " ".join([topics_label, topic])
-
-                        # gets intersected/common topic nodes in current topic combination
-                        common_node_ids = set.intersection(*list_of_sets)
-
-                        # if there are intersected/common nodes, then plot nodes' coordinates
-                        if len(common_node_ids) > 0:
-                            # create a scatter plot of similarities between these set of nodes from combo of topics
-                            latitudes = []
-                            longitudes = []
-                            for node_id in common_node_ids:
-                                node_coordinate = self.node_id_w_its_coordinate[node_id]
-                                latitudes.append(node_coordinate.latitude)
-                                longitudes.append(node_coordinate.longitude)
-
-                            plt.scatter(longitudes, latitudes)
-                            plotted_topics_labels.append(topics_label)
-
-                plt.legend(plotted_topics_labels, loc='center left', bbox_to_anchor=(1, 0.5))
-                plt.xlabel("longitude")
-                plt.ylabel("latitude")
-                plt.show()
-
-        # Coordinates = namedtuple('Coordinates', ['latitude', 'longitude'])
         nodes_from_json, _, _ = gn.parse_real_data("topo/essential_bitnode_info.json")
         node_plotter = PlotNodes(nodes_from_json)
         node_plotter.group_nodes()
         node_plotter.plot_scatter_plot()
+    elif cmd == 'gen-specs':
+        if len(sys.argv) < 7:
+            print("require arguments")
+            sys.exit(0)
 
-        # sets topics' subscribing nodes and nodes' coordinates
-        # topic_to_subscribing_nodes = dict()  # key=continent, value=set of node ids
-        # node_id_w_its_coordinate = dict()  # key = node id, value = its coordinate
-        # for node_info in nodes_from_json:
-        #     topic = node_info["continent"]
-        #
-        #     node_coordinate = Coordinates(node_info["latitude"], node_info["longitude"])
-        #     node_id = int(node_info["id"])
-        #     node_id_w_its_coordinate[node_id] = node_coordinate
-        #
-        #     if topic not in topic_to_subscribing_nodes:
-        #         topic_to_subscribing_nodes[topic] = {node_id}  # add topic key and initializes a set w/ node's id
-        #     else:
-        #         topic_to_subscribing_nodes[topic].add(node_id)  # add node id to respective topic's set
-
-        # plotted_topics_labels = []  # used to get legend of topic combinations' intersections that were plotted
-        # for combo_len in range(1, len(topic_to_subscribing_nodes) + 1):
-        #     # find all combos of topics based on current combo length
-        #     combos_of_topics = combinations(topic_to_subscribing_nodes.keys(), combo_len)
-        #
-        #     # find each topic combination's intersected/common nodes, then plot them
-        #     for combo in combos_of_topics:
-        #
-        #         # gets topics' subscribed nodes (in sets) and add them in list_of_sets
-        #         list_of_sets = []
-        #         topics_label = ""
-        #         for topic in combo:
-        #             set_of_node_ids = topic_to_subscribing_nodes[topic]
-        #             list_of_sets.append(set_of_node_ids)
-        #             topics_label = " ".join([topics_label, topic])
-        #
-        #         # gets intersected/common topic nodes in current topic combination
-        #         common_node_ids = set.intersection(*list_of_sets)
-        #
-        #         # if there are intersected/common nodes, then plot nodes' coordinates
-        #         if len(common_node_ids) > 0:
-        #             # create a scatter plot of similarities between these set of nodes from combo of topics
-        #             latitudes = []
-        #             longitudes = []
-        #             for node_id in common_node_ids:
-        #                 node_coordinate = node_id_w_its_coordinate[node_id]
-        #                 latitudes.append(node_coordinate.latitude)
-        #                 longitudes.append(node_coordinate.longitude)
-        #
-        #             plt.scatter(longitudes, latitudes)
-        #             plotted_topics_labels.append(topics_label)
-        #
-        # plt.legend(plotted_topics_labels, loc='center left', bbox_to_anchor=(1, 0.5))
-        # plt.xlabel("longitude")
-        # plt.ylabel("latitude")
-        # plt.show()
-
+        n_topic = int(sys.argv[2])
+        n_pub_per_topic = int(sys.argv[3])
+        n_lurk_per_topic = int(sys.argv[4])
+        n_sybil_per_topic = int(sys.argv[5])
+        is_clusterized = sys.argv[6] == 'true'
+        n_non_cluster = int(sys.argv[7])
+        gn.gen_specs(n_topic, n_pub_per_topic, n_lurk_per_topic, n_sybil_per_topic, is_clusterized, n_non_cluster)
     else:
         print('Require a valid subcommand', cmd)

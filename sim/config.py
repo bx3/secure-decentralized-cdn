@@ -31,11 +31,11 @@ TRANS_MSG_LEN = 2000  #  bytes
 ATTACK_START = 0
 
 # mesh para
-OVERLAY_D = 4  # 6 even number
-OVERLAY_DLO = 2  # 5
-OVERLAY_DHI = 7  # 12
-OVERLAY_DSCORE = 3  # 6
-OVERLAY_DLAZY = 6  # 12
+OVERLAY_D = 4#6 # 6 even number 4
+OVERLAY_DLO = 2#5 # 5 2
+OVERLAY_DHI = 7#12 # 12 7
+OVERLAY_DSCORE = 3#6 # 6 3
+OVERLAY_DLAZY = 12#12 # 12 12
 
 UPLINK_CONGEST_THRESH = OVERLAY_DHI*5  # num message in the up link capacity
 

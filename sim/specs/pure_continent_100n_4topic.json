@@ -1,0 +1,128 @@
+{
+    "summary": {
+        "num_topic": 4,
+        "is_clusterized": true
+    },
+    "topic_specs": [
+        {
+            "topic": "EDU",
+            "cluster_spec": {
+                "topic": "EDU",
+                "n_pub": 1,
+                "n_lurk": 24,
+                "n_sybil": 0,
+                "method": "random"
+            },
+            "non_cluster_specs": [
+                {
+                    "topic": "COM",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                },
+                {
+                    "topic": "GOV",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                },
+                {
+                    "topic": "BOOK",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                }
+            ]
+        },
+        {
+            "topic": "COM",
+            "cluster_spec": {
+                "topic": "COM",
+                "n_pub": 1,
+                "n_lurk": 24,
+                "n_sybil": 0,
+                "method": "random"
+            },
+            "non_cluster_specs": [
+                {
+                    "topic": "EDU",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                },
+                {
+                    "topic": "GOV",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                },
+                {
+                    "topic": "BOOK",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                }
+            ]
+        },
+        {
+            "topic": "GOV",
+            "cluster_spec": {
+                "topic": "GOV",
+                "n_pub": 1,
+                "n_lurk": 24,
+                "n_sybil": 0,
+                "method": "random"
+            },
+            "non_cluster_specs": [
+                {
+                    "topic": "EDU",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                },
+                {
+                    "topic": "COM",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                },
+                {
+                    "topic": "BOOK",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                }
+            ]
+        },
+        {
+            "topic": "BOOK",
+            "cluster_spec": {
+                "topic": "BOOK",
+                "n_pub": 1,
+                "n_lurk": 24,
+                "n_sybil": 0,
+                "method": "random"
+            },
+            "non_cluster_specs": [
+                {
+                    "topic": "EDU",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                },
+                {
+                    "topic": "COM",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                },
+                {
+                    "topic": "GOV",
+                    "n_pub": 0,
+                    "n_lurk": 0,
+                    "n_sybil": 0
+                }
+            ]
+        }
+    ]
+}

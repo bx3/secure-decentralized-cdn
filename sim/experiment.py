@@ -9,6 +9,8 @@ import sim.attacks as attacks
 import json
 import sys
 import time
+import threading
+import time
 
 
 class Snapshot:
@@ -20,32 +22,38 @@ class Snapshot:
         self.network = None  # message queue in for each node
 
     def __repr__(self):
-        print("round", self.round)
-        print("nodes: ")
-        for node_id, node_state in self.nodes.items():
-            print("\t node_id:", node_id)
-            for topic, state in node_state.items():
-                print("\t topic:", topic)
-                print("\t state:", state)
-            print()
-
-        # print("sybils", self.sybils)
-        # print("all_nodes", self.all_nodes)
-        # print("network", self.network)
-        print()
+        # print("round", self.round)
+        # print("nodes: ")
+        # for node_id, node_state in self.nodes.items():
+        #     print("\t node_id:", node_id)
+        #     for topic, state in node_state.items():
+        #         print("\t topic:", topic)
+        #         print("\t state:", state)
+        #     print()
+        #
+        # # print("sybils", self.sybils)
+        # # print("all_nodes", self.all_nodes)
+        # # print("network", self.network)
+        # print()
         return ""
 
 
 class Experiment:
-    def __init__(self, setup_json, heartbeat):
+    def __init__(self, setup_json, heartbeat, update_method):
         self.snapshots = []
         self.nodes = {}  # honest nodes
         self.sybils = {}
         self.all_nodes = {}
 
-        self.network = Network(setup_json)  # sets up net with all nodes' bandwidth, coordinates and links
-        self.heartbeat_period = heartbeat  # .2 sec
-    
+        # sets up net with all nodes' bandwidth, coordinates and links
+        self.network = Network(setup_json)
+        # .2 sec
+        self.heartbeat_period = heartbeat
+
+        # log file
+        self.log_file = 'data/log'
+        self.update_method = update_method
+
         # load both nodes and sybil nodes
         self.load_nodes(setup_json)  # get each node's info and put it in self.nodes
         self.setup_mesh()
@@ -55,27 +63,57 @@ class Experiment:
         # eclipse attack
         self.target = -1
 
+        with open(self.log_file, 'w') as w:
+            w.write("num_node" + str(len(self.nodes)) + '\n')
+
+        # self.temp_curr_r = 0
+
     # # # # # # # # 
     #  main loop  #
     # # # # # # # # 
     def start(self, epoch, start_round=0, attack_strategy='None', targets=[]):
+        total_take_snapshot_time = 0
+        total_honest_handle_time = 0
+        total_push_honest_msgs = 0
+        total_deliver_msgs = 0
+        """
+        # initialize how many nodes to process per thread
+        from math import ceil
+        number_of_chunks = 2
+        chunk_size = ceil(len(self.nodes) / number_of_chunks)
+        nodes = list(self.nodes.values())
 
+        # initialize thread
+        all_threads = [None] * len(self.nodes)
+        for j in range(len(self.nodes)):
+            threads = [None] * number_of_chunks
+            for i in range(number_of_chunks):
+                chunk = nodes[i * chunk_size:(i + 1) * chunk_size]
+                t = threading.Thread(target=self.honest_nodes_handle_msgs_chunks_self_temp_r, args=[chunk])
+                threads[i] = t
+
+            all_threads[j] = threads
+        """
+
+        # curr_shots = [None] * len(range(start_round, start_round+epoch))
         curr_shots = []
+        i = 0
         for r in range(start_round, start_round+epoch):
             # debug
-            # if r % HEARTBEAT == 0:
-            #    print("****\t\theartbeat generated", r, HEARTBEAT)
+            if r % HEARTBEAT == 0:
+                print("****\t\theartbeat generated", r, HEARTBEAT)
 
             # start attack
             # self.attack_management(r, self.network, targets)
 
             # network store messages from honest nodes
             # self.push_sybil_msgs(r)
-            import time
             t1 = time.time()
             self.push_honest_msgs(r)  # push msg into net
             t2 = time.time()
-            print("self.push_honest_msgs time: ", t2 - t1)
+            total_push_honest_msgs += t2 - t1
+
+            # print("self.push_honest_msgs time: ", t2 - t1)
 
             # if r > 0:
             #    self.attack_freeze_network(r)
@@ -84,62 +122,40 @@ class Experiment:
             t1 = time.time()
             self.deliver_msgs(r)
             t2 = time.time()
-            print("self.deliver_msgs time: ", t2 - t1)
+            total_deliver_msgs += t2 - t1
+            # print("self.deliver_msgs time: ", t2 - t1)
 
             # honest node retrieve msgs
             t1 = time.time()
             self.honest_nodes_handle_msgs(r)
             # self.honest_nodes_handle_msgs_multi_processing(r)
+            """
+            self.temp_curr_r = r
+            self.honest_nodes_handle_msgs_initialized_multi_processing(all_threads[r])
+            """
             t2 = time.time()
             print("self.honest_nodes_handle_msgs time: ", t2 - t1)
+            total_honest_handle_time += t2 - t1
             # self.sybil_nodes_handle_msgs(r)
 
             # assume sybils have powerful internal network, node processing speed
             # self.sybil_use_fast_internet(r)
 
             # take snapshot
+            start = time.time()
             curr_shots.append(self.take_snapshot(r))  # look at network state for each iter
+            # curr_shots[i] = self.take_snapshot(r)
+            # i += 1
             # print("round", r, "finish using ", time.time()-start)
-        return curr_shots
+            total_take_snapshot_time += time.time() - start
+            print("take snapshot", time.time() - start)
 
-    def start_with_multi_threading(self, epoch, start_round=0, attack_strategy='None', targets=[]):
-        from concurrent import futures
-        rounds = range(start_round, start_round + epoch)
-        with futures.ProcessPoolExecutor() as executor:  # starts multithreading
-
-            # returns results in the rounds order that they were started
-            curr_shots = executor.map(self.start_epoch_round, rounds)
-            curr_shots = list(curr_shots)
+        print("total_push_honest_msgs", total_push_honest_msgs)
+        print("total_deliver_msgs", total_deliver_msgs)
+        print("total_honest_handle_time", total_honest_handle_time)
+        print("total_take_snapshot_time", total_take_snapshot_time)
 
         return curr_shots
-
-    def start_epoch_round(self, r):
-        # debug
-        # if r % HEARTBEAT == 0:
-        #    print("****\t\theartbeat generated", r, HEARTBEAT)
-
-        # start attack
-        # self.attack_management(r, self.network, targets)
-
-        # network store messages from honest nodes
-        # self.push_sybil_msgs(r)
-        self.push_honest_msgs(r)  # push msg into net
-
-        # if r > 0:
-        #    self.attack_freeze_network(r)
-
-        # network deliver msgs
-        self.deliver_msgs(r)
-        # honest node retrieve msgs
-        self.honest_nodes_handle_msgs(r)
-        # self.sybil_nodes_handle_msgs(r)
-
-        # assume sybils have powerful internal network, node processing speed
-        # self.sybil_use_fast_internet(r)
-
-        # take snapshot
-        return self.take_snapshot(r)  # look at network state for each iter
-        # print("round", r, "finish using ", time.time()-start)
 
     def push_sybil_msgs(self, r):
         for u, node in self.sybils.items():
@@ -153,32 +169,9 @@ class Experiment:
             # if network has too many messages, stop
             # if not self.network.is_uplink_congested(u):
 
-            # t1 = time.time()
             msgs = node.send_msgs()
-            # t2 = time.time()
-            # print("node.send_msgs() time: ", t2 - t1)
-            # msgs = node.send_msgs_multi_processing()
 
-
-            # t1 = time.time()
             self.network.push_msgs(msgs, curr_r)
-            # t2 = time.time()
-            # print("network.push_msgs() time: ", t2 - t1)
-
-        from concurrent import futures
-        # with futures.ThreadPoolExecutor() as executor:  # starts multithreading
-        #     [executor.submit(self.push_msgs, node, curr_r) for u, node in self.nodes.items()]
-
-        # with futures.ProcessPoolExecutor() as executor:
-        #     [executor.submit(self.push_msgs, node, curr_r) for u, node in self.nodes.items()]
-            # repeated_rounds = [curr_r] * len(self.nodes)
-            # executor.map(self.push_msgs, self.nodes.values(), repeated_rounds)
-
-    def push_msgs(self, node, curr_r):
-        # if network has too many messages, stop
-        # if not self.network.is_uplink_congested(u):
-        msgs = node.send_msgs()
-        self.network.push_msgs(msgs, curr_r)
 
     def attack_management(self, r, network, targets):
         self.adversary.add_targets(targets)  # some hack
@@ -193,19 +186,25 @@ class Experiment:
                  
     def deliver_msgs(self, curr_r):
         num_delivered_msg = 0
+        # t1 = time.time()
+        # updates where msgs are in terms of sending (ex: have elapsed time reached over prop_delay)
         dst_msgs = self.network.update(True)
-        print("dst_msgs", dst_msgs)
+        # t2 = time.time()
+        # print(" self.network.update time: ", (t2 - t1) * 1e6)
+
+        # print("dst_msgs", dst_msgs)
         for dst, msgs in dst_msgs.items():
             # honest 
             if dst in self.nodes:
                 # print("\n\ncurr_r", curr_r)
+                # once msgs have prop to dest, insert into dest node's in_msg list
                 self.nodes[dst].insert_msg_buff(msgs)
             else:
                 self.sybils[dst].insert_msg_buff(msgs)
             num_delivered_msg += len(msgs)
 
     def all_nodes_handle_msgs(self, curr_r):
-        print("all_nodes_handle_msgs")
+        # print("all_nodes_handle_msgs")
         # node process messages
         for u, node in self.nodes.items():
             if node.role != NodeType.SYBIL:
@@ -214,18 +213,117 @@ class Experiment:
                 node.process_msgs(curr_r)
 
     def honest_nodes_handle_msgs_multi_processing(self, curr_r):
+        """
         from concurrent import futures
-        with futures.ProcessPoolExecutor() as executor:
-            [executor.submit(node.process_msgs, curr_r) for u, node in self.nodes.items()]
-        # for u, node in self.nodes.items():
-        #     # TODO assume all are honest
-        #     # if node.role != NodeType.SYBIL:
-        #     node.process_msgs(curr_r)
+        from math import ceil
+        number_of_chunks = 2
+        chunk_size = ceil(len(self.nodes) / number_of_chunks)
+        nodes = list(self.nodes.values())
+
+        with futures.ThreadPoolExecutor() as executor:
+            # for i in range(number_of_chunks):
+            #     chunk = nodes[i * chunk_size:(i + 1) * chunk_size]
+            #     executor.submit(self.honest_nodes_handle_msgs_chunks, chunk, curr_r)
+            #     # !!!!! make sure executor.submit is running in parallel !!!!!!
+            i = 0
+            while i < number_of_chunks:
+                chunk = nodes[i * chunk_size:(i + 1) * chunk_size]
+                executor.submit(self.honest_nodes_handle_msgs_chunks, chunk, curr_r)
+                i += 1
+        """
+
+        """
+        threads = [None] * number_of_chunks
+        for i in range(number_of_chunks):
+            chunk = nodes[i * chunk_size:(i + 1) * chunk_size]
+            t = threading.Thread(target=self.honest_nodes_handle_msgs_chunks, args=[chunk, curr_r])
+            t.start()
+            threads[i] = t
+
+        for thread in threads:
+            thread.join()
+        """
+
+        """
+        from multiprocessing import Pool, cpu_count
+        from itertools import repeat
+        cpus = cpu_count()
+        nodes = list(self.nodes.values())
+        with Pool(processes=3) as pool:  # using default 1 process per cpu, reduce
+
+            # if it makes machine run too slow
+            pool.starmap(self.honest_node_handle_msgs, zip(nodes, repeat(curr_r)))
+        """
+
+        """
+        from multiprocessing import Pool, cpu_count
+        from math import ceil
+        from itertools import repeat
+        cpus = cpu_count()
+        chunk_size = ceil(len(self.nodes) / cpus)
+        nodes = list(self.nodes.values())
+
+        chunks = [None] * cpus
+        i = 0
+        while i < cpus:
+            chunk = nodes[i * chunk_size:(i + 1) * chunk_size]
+            chunks[i] = chunk
+            i += 1
+
+        with Pool(processes=cpus) as pool:  # using default 1 process per cpu, reduce
+
+            # if it makes machine run too slow
+            pool.starmap(self.honest_nodes_handle_msgs_chunks, zip(chunks, repeat(curr_r)))
+        """
+
+        from multiprocessing.pool import ThreadPool
+        from multiprocessing import cpu_count
+        from itertools import repeat
+        nodes = list(self.nodes.values())
+        with ThreadPool(processes=2) as pool:  # using default 1 process per cpu, reduce
+
+            # if it makes machine run too slow
+            pool.starmap(self.honest_node_handle_msgs, zip(nodes, repeat(curr_r)))
+
+
+    @staticmethod
+    def honest_node_handle_msgs(node, curr_r):
+        # print("thread: ", threading.current_thread())
+
+        node.process_msgs(curr_r)
+
+    @staticmethod
+    def honest_nodes_handle_msgs_chunks(nodes, curr_r):
+        print("thread: ", threading.current_thread())
+        for node in nodes:
+            # TODO assume all are honest
+            # if node.role != NodeType.SYBIL:
+
+            # generates out_msgs if random.random() < self.gen_prob and nodes' role is a publisher
+            node.process_msgs(curr_r)
+
+    def honest_nodes_handle_msgs_initialized_multi_processing(self, threads):
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+    def honest_nodes_handle_msgs_chunks_self_temp_r(self, nodes):
+        print("thread: ", threading.current_thread())
+        for node in nodes:
+            # TODO assume all are honest
+            # if node.role != NodeType.SYBIL:
+
+            # generates out_msgs if random.random() < self.gen_prob and nodes' role is a publisher
+            node.process_msgs(self.temp_curr_r)
 
     def honest_nodes_handle_msgs(self, curr_r):
         for u, node in self.nodes.items():
             # TODO assume all are honest
             # if node.role != NodeType.SYBIL:
+
+            # generates out_msgs if random.random() < self.gen_prob and nodes' role is a publisher
             node.process_msgs(curr_r)
 
     def sybil_nodes_handle_msgs(self, curr_r):
@@ -235,17 +333,22 @@ class Experiment:
         self.adversary.sybil_nodes_redistribute_msgs(curr_r)
 
     def take_snapshot(self, r):
+
         snapshot = Snapshot()
         snapshot.round = r
         # get all node states
+        t1 = time.time()
+
         for u, node in self.nodes.items():
             snapshot.nodes[u] = node.get_states()
+        t2 = time.time()
+        print("     self.network.take_snapshot for loops time: ", t2 - t1)
 
         for u, sybil in self.sybils.items():
             snapshot.sybils[u] = sybil.get_states()
 
         snapshot.all_nodes = {**snapshot.nodes, **snapshot.sybils}
-        # get network 
+        # get network
         snapshot.network = self.network.take_snapshot()
         
         self.snapshots.append(snapshot)
@@ -267,7 +370,6 @@ class Experiment:
             interval = float(u["interval"])
             x = float(u["x"])
             y = float(u["y"])
-            print(u_id, topics) 
             if u_id not in self.nodes:
                 self.nodes[u_id] = Node(
                     roles,
@@ -277,7 +379,9 @@ class Experiment:
                     self.heartbeat_period,
                     topics,
                     x,
-                    y
+                    y,
+                    self.log_file,
+                    self.update_method
                 )
             else:
                 print('Error. config file duplicate id')

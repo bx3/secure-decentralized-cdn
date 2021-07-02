@@ -8,6 +8,7 @@ from sim.scores import PeerScoreCounter
 import sys
 from sim.generate_network import Topic
 from sim.generate_network import get_topic_type
+from sim.adaptor import Adaptor
 
 
 State = namedtuple('State', [
@@ -34,20 +35,34 @@ class Peer:
 
 
 class Node:
-    def __init__(self, topic_roles, u, interval, topic_peers, heartbeat_period, topics, x, y):
+    def __init__(self, topic_roles, u, interval, topic_peers, heartbeat_period, topics, x, y, log_file, update_method):
         self.id = u # my id
         self.topics = topics
-        self.topic_peers = topic_peers  # topic peers: "known" dict in json; key=topic, value=peers
-        self.actors = {}  # key is topic, value is actor
+        self.topic_peers = topic_peers.copy()
+        self.heartbeat_period = heartbeat_period
+        self.actors = {} # key is topic, value is actor
         self.x = x
         self.y = y
         self.in_msgs = []
+        self.log_file = log_file
 
-        # each node has multiple topics => 1:1 for topic:actor
+        if update_method not in ['individual', 'coll-subset']:
+            print('Unknown update method')
+            sys.exit(1)
+
+        self.update_method = update_method # 'individual' # individual#'individual' # '' 'coll-subset'
         for topic in topics:
             peers = topic_peers[topic]
             role = topic_roles[topic]
-            self.actors[topic] = TopicActor(role, u, interval, peers, heartbeat_period, topic)
+            self.actors[topic] = TopicActor(role, u, interval, peers, heartbeat_period, topic, 
+                    self.update_method)
+
+
+        desired_num_conn = len(self.topics) * OVERLAY_D
+        desired_num_keep = desired_num_conn - 2 # TODO 2 rand conn 
+
+        self.adaptor = Adaptor(self.id, self.topics, heartbeat_period, desired_num_conn, desired_num_keep, self.log_file) 
+        
 
     def get_all_mesh(self):
         meshes = set()
@@ -60,6 +75,7 @@ class Node:
 
     # TODO randomize order maybe
     def send_msgs(self):
+        # get node's topics' out_msgs
         out_msgs = []
         for topic, actor in self.actors.items():
             topic_msgs = actor.send_msgs()
@@ -87,26 +103,81 @@ class Node:
 
     def insert_msg_buff(self, msgs):
         self.in_msgs += msgs  # append
-        print("\nnode insert_msg_buff")
-        print("self.in_msgs", self.in_msgs)
-        print("msgs", msgs)
+        # print("\nnode insert_msg_buff")
+        # print("self.in_msgs", self.in_msgs)
+        # print("msgs", msgs)
+
+    def write_curr_mesh(self, r, note):
+        with open(self.log_file, 'a') as w:
+            comment = note + "Epoch {r:<5}, node {node_id:<5}".format(r=r, node_id=self.id)
+            for topic, actor in self.actors.items():
+                mesh = sorted(list(actor.mesh.keys()))
+                topic_comm = "topic {topic:<4}: {mesh}".format(topic=topic, mesh=mesh)
+                comment += " " + topic_comm
+            w.write(comment + '\n')
+
+    def get_curr_mesh(self):
+        out_meshes = set()
+        in_meshes = set()
+        for topic, actor in self.actors.items():
+            for peer, direction in actor.mesh.items():
+                if direction == Direction.Outgoing:
+                    out_meshes.add(peer)
+                elif direction == Direction.Incoming:
+                    in_meshes.add(peer)
+                else:
+                    print('Error. Unknown conn direction', direction)
+                    sys.exit(1)
+        return list(out_meshes), list(in_meshes)
+
 
     def process_msgs(self, curr_r):
+        if curr_r % self.heartbeat_period == 0:
+            self.write_curr_mesh(curr_r, '')
+
+        # TODO experimental, collectively update
+        if self.update_method=='coll-subset' and curr_r > 0 and curr_r % self.heartbeat_period == 0:
+            
+            out_meshes, in_meshes = self.get_curr_mesh()
+            subset, rand_peers = self.adaptor.update(curr_r, out_meshes, in_meshes, self.topic_peers)
+
+            # distribute conns to topic actors
+            if subset is not None:
+                for topic, actor in self.actors.items():
+                    peers = []
+                    for n in list(subset)+rand_peers:
+                        if n in self.topic_peers[topic]:
+                            peers.append(n)
+
+                    actor.update_new_conn(peers, curr_r)
+            
+            self.adaptor.reset()
+
+        # if self.id == 6:
+            # self.write_curr_mesh(curr_r, '')
+
         # print("node", self.id, "process_msgs", len(self.in_msgs))
         actor_msgs = defaultdict(list)
+        # if msgs have reached to current node...
         while len(self.in_msgs) > 0:
             msg = self.in_msgs.pop(0)
             mtype, _, src, dst, _, _, payload, topic, send_r = msg
+
             if topic not in self.actors:
-                print('Warning. Receive other topic msg')
+                print('Warning. Receive non-subscribing topic', topic, 'round', curr_r,
+                        'node', self.id, 'my topics', self.topics, 'mtype', mtype, 'from', src)
                 sys.exit(1)
+
+            # update adaptor for every transaction
+            if mtype == MessageType.TRANS and src in self.actors[topic].mesh:
+                self.adaptor.add_time(msg, curr_r)
 
             actor_msgs[topic].append(msg)
         # print(self.id, actor_msgs)
         for topic in self.topics:
             actor = self.actors[topic]
-            in_msgs = actor_msgs[topic]  # actor_msgs = {key: topic; value: list of in_msgs}
-            print("node ", self.id, "process_msgs's in_msgs", in_msgs)
+            in_msgs = actor_msgs[topic]  # actor_msgs = {key: topic; value: list of msgs that arrived}
+            # print("node ", self.id, "process_msgs's in_msgs", in_msgs)
             actor.process_msgs(in_msgs, curr_r)
 
     def get_states(self):
@@ -120,8 +191,9 @@ class Node:
 # assume there is only one topic then
 # generic data structure usable by all protocols
 class TopicActor:
-    def __init__(self, role, u, interval, peers, heartbeat_period, topic):
-        self.id = u  # my id
+
+    def __init__(self, role, u, interval, peers, heartbeat_period, topic, update_method):
+        self.id = u # my id
         self.topic = topic
         self.role = role
         self.conn = set()  # lazy push: nodes that are NOT PART of the mesh comm. w/ mesh-connected nodes through gossip
@@ -142,7 +214,7 @@ class TopicActor:
         if interval == 0:
             self.gen_prob = 0
         else:
-            intervals_per_trans = float(interval) / float(SEC_PER_ROUND)
+            intervals_per_trans = float(interval) / float(SEC_PER_ROUND) /2
             self.gen_prob = 1/intervals_per_trans  # per round 
 
         self.msg_ids = set()
@@ -151,17 +223,33 @@ class TopicActor:
         self.round_trans_ids = set()  # keep track of msgs used for analysis
         self.trans_record = {}  # key is trans_id, value is (recv r, send r) send_r is the first born time
         self.last_heartbeat = -1
+        self.update_method = update_method
 
     def run_scores_background(self, curr_r):
         for u, counters in self.scores.items():
             counters.run_background(curr_r)
 
+    def update_new_conn(self, new_conns, r):
+        # print("node", self.id, "update new conns", new_conns, 'from', self.mesh)
+        mesh = self.mesh.copy()
+        for n in mesh:
+            if n not in new_conns:
+                if self.id == 6:
+                    print('round', r, 'node', 6, 'prune', n)
+                self.prune_peer(n, r)
+
+        for n in new_conns:
+            if n not in mesh:
+                self.graft_peer(n, r)
+        
+    # process diff types of msgs and publish msgs based on prob if is a publisher node on current topic
     # worker func 
     def process_msgs(self, msgs, r):
         # schedule heartbeat 
-        self.schedule_heartbeat(r)
+        if self.update_method == 'individual':
+            self.schedule_heartbeat(r)
         # background peer local view update
-        self.run_scores_background(r)
+        # self.run_scores_background(r)
         self.round_trans_ids.clear()
         in_msgs = msgs.copy()
         # handle msgs
@@ -175,7 +263,7 @@ class TopicActor:
             if mtype == MessageType.GRAFT:
                 self.proc_GRAFT(msg, r)
             elif mtype == MessageType.PRUNE:
-                self.proc_PRUNE(msg)
+                self.proc_PRUNE(msg, r)
             elif mtype == MessageType.LEAVE:
                 self.proc_LEAVE(msg) 
             elif mtype == MessageType.IHAVE:
@@ -227,9 +315,9 @@ class TopicActor:
         if random.random() < self.gen_prob:
             self.gen_trans_num += 1
             trans_id = TransId(self.id, self.gen_trans_num)
-            print("self.gen_prob", self.gen_prob)
-            print('***** at epoch {r:<5}: node {node_id:>5} create a {topic:>5} msg *******'.format( 
-                r=r, node_id=self.id, topic=self.topic))
+            # DEBUG
+            # print('***** at epoch {r:<5}: node {node_id:>5} create a {topic:>5} msg *******'.format( 
+                # r=r, node_id=self.id, topic=self.topic))
             for peer in self.mesh:
                 msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id, r)
                 # print(self.id, 'generate trans', trans_id, 'to', peer)
@@ -241,15 +329,18 @@ class TopicActor:
         # print(self.mesh)
         # in case the peer has not been accepted by the mesh, but relay msg
         if src not in self.mesh:
-            print('Warning. src not from mesh')
+            # print('Warning. In graph/Actor proc_TRANS. src not from mesh.', 
+                    # "At round", r,
+                    # '. Node', self.id, 'src',src, 'my-mesh', list(self.mesh.keys()),
+                    # '. Topic', topic, 'my-topic', self.topic, 'payload', trans_id)
             return 
 
         self.scores[src].add_msg_delivery()
 
         # if not seen msg before
         # if mid not in self.msg_ids:
-        print("trans_id", trans_id)
-        if trans_id not in self.trans_record:  # only adding 1st occurrences of TransIds' transfer records w/in a node
+        # print("trans_id", trans_id)
+        if trans_id not in self.trans_record:  # only adding 1st occurrences of TransIds' transfer records w/in a node's topic
             self.msg_ids.add(mid)
             self.scores[src].update_p2()
             self.round_trans_ids.add(trans_id)
@@ -257,13 +348,16 @@ class TopicActor:
             for peer in self.mesh:
                 if peer != src:
                     msg = self.gen_msg(MessageType.TRANS, peer, TRANS_MSG_LEN, trans_id, send_r)
-                    # print('***** node', self.id, 'of', self.topic, 'at e:', r, 'forward a', self.topic, 'msg born at', send_r, ' *******')
+                    # DEBUG
+                    # print('at epoch {r:<5}: node {node_id:>5} forward a {topic:>5} msg msg born at {send_r}'.format(r=r, node_id=self.id, topic=self.topic, send_r=send_r))
                     # print(self.id, 'forward', self.topic, trans_id, 'to', peer)
+
+                    # flood msg to node's mesh, but 1st put all out msgs into a list
                     self.out_msgs.append(msg)
-            print("\t\ttrans_id", trans_id)
-            print("\t\tputting received and sent r into trans_record")
-            print("\t\tsend_r:", send_r)
-            print("\t\tr: ", r)
+            # print("\t\ttrans_id", trans_id)
+            # print("\t\tputting received and sent r into trans_record")
+            # print("\t\tsend_r:", send_r)
+            # print("\t\tr: ", r)
             self.trans_record[trans_id] = (r, send_r)
 
     def init_peers_scores(self):
@@ -311,6 +405,7 @@ class TopicActor:
 
     # TODO generate IHave
     def proc_Heartbeat(self, msg, r):
+        # print("proc_Heartbeat")
         nodes = self.get_rand_gossip_nodes()
         mesh_peers = []
         # prune neg mesh
@@ -417,8 +512,9 @@ class TopicActor:
         pass
 
     # find other peers to add
-    def proc_PRUNE(self, msg):
+    def proc_PRUNE(self, msg, r):
         _, _, src, _, _, _, _, _, _ = msg
+        # print('round', r, 'node', self.id, 'rejected by', src)
         if src in self.mesh:
             self.mesh.pop(src, None)
             self.scores[src].in_mesh = False
@@ -452,11 +548,15 @@ class TopicActor:
     # the other peer has added me to its mesh, I will add it too 
     def proc_GRAFT(self, msg, r):
         _, _, src, _, _, _, _, _, _ = msg
+
         if src in self.mesh:
             return
 
         if self.filter_graft(msg, r):
             # send prune msg
+            # print('node', self.id, 'reject graft from',src)
+            msg = self.gen_msg(MessageType.PRUNE, src, CTRL_MSG_LEN, None, r)
+            self.out_msgs.append(msg)
             return 
 
         # print(self.id, 'accept a GRAFT from', src)
